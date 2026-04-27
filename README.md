@@ -20,7 +20,7 @@ python scan_folder.py --folder ./my_manga_folder --move_spam
 ```
 
 ```bash
-python scan_folder.py --folder ./my_manga_folder --rename_spam - threshold 0.83
+python scan_folder.py --folder './my_manga_folder' --rename_spam - threshold 0.83
 ```
 
 # Spam vs. Manga Binary Image Classifier
