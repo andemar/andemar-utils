@@ -1,3 +1,28 @@
+# Commands to use the project
+```bash
+pip install torch==2.3.0 torchvision==0.18.0 --index-url https://download.pytorch.org/whl/cu121
+```
+```bash
+pip install -r requirements.txt
+```
+
+```bash
+Copy-Item "F:\AI\Training\manga_spam\*"   -Destination ".\dataset\spam\"     -Recurse
+Copy-Item "F:\AI\Training\manga_images\*" -Destination ".\dataset\not_spam\" -Recurse
+```
+
+```bash
+python train.py --epochs 30
+```
+
+```bash
+python scan_folder.py --folder ./my_manga_folder --move_spam
+```
+
+```bash
+python scan_folder.py --folder ./my_manga_folder --rename_spam - threshold 0.83
+```
+
 # Spam vs. Manga Binary Image Classifier
 
 An EfficientNet-B4 based binary classifier that detects **spam images** (translator site pages, ad-heavy pages, watermarked images) vs. **clean manga panels**.

@@ -80,6 +80,12 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--rename_spam",
+        action="store_true",
+        default=False,
+        help="If set, rename flagged spam images in-place by appending '-spam' to the filename (e.g. page01.jpg → page01-spam.jpg).",
+    )
+    parser.add_argument(
         "--img_size",
         type=int,
         default=380,
@@ -244,6 +250,39 @@ def move_spam_images(
     print(f"\n[Move] {moved} spam image(s) moved → {spam_dir}")
 
 
+def rename_spam_images(
+    results: List[Tuple[Path, float, bool]],
+) -> None:
+    """
+    Rename flagged spam images in-place by appending '-spam' before the extension.
+
+    Example: page01.jpg → page01-spam.jpg
+
+    Already-suffixed files (ending in '-spam') are skipped to avoid double-renaming.
+
+    Args:
+        results : Output of run_inference().
+    """
+    renamed = 0
+    for img_path, prob, is_spam in results:
+        if not is_spam:
+            continue
+        # Skip if the file was already renamed in a previous run
+        if img_path.stem.endswith(".spam"):
+            tqdm.write(f"  [Rename] Skipped (already suffixed): {img_path.name}")
+            continue
+        new_name = img_path.parent / f"{img_path.stem}.spam{img_path.suffix}"
+        # Handle collisions by appending a counter before the suffix
+        counter = 1
+        while new_name.exists():
+            new_name = img_path.parent / f"{img_path.stem}.spam_{counter}{img_path.suffix}"
+            counter += 1
+        img_path.rename(new_name)
+        renamed += 1
+
+    print(f"\n[Rename] {renamed} spam image(s) renamed with '.spam' suffix")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -310,6 +349,12 @@ def main() -> None:
         move_spam_images(results, folder)
     elif args.move_spam and spam_count == 0:
         print("\n[Move] No spam images to move.")
+
+    # ---- Optionally rename spam images in-place ----
+    if args.rename_spam and spam_count > 0:
+        rename_spam_images(results)
+    elif args.rename_spam and spam_count == 0:
+        print("\n[Rename] No spam images to rename.")
 
 
 if __name__ == "__main__":
