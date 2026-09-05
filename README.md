@@ -73,20 +73,115 @@ Run the JAR without file arguments or with `--server`:
 java -jar build/libs/pdf-cleaner-0.0.1-SNAPSHOT.jar --server
 ```
 
-#### Endpoints
+The application starts by default on port `8080`.
 
-- `GET /api/health`
-  - Returns service status.
-- `POST /process`
-  - Multipart form upload with `file` field.
-  - Query parameters:
-    - `aggressiveness`: `CONSERVATIVE` | `BALANCED` | `AGGRESSIVE`
-    - `layoutMode`: `REFLOWABLE` | `FIXEDISH`
-    - `whitelist`: comma-separated phrases to preserve
-  - Returns: Cleaned `.epub` file attachment (`application/epub+zip`).
-- `POST /api/dry-run`
-  - Multipart form upload with `file` field.
-  - Returns: JSON object containing detection statistics, list of flagged phrases, and flagged images.
+#### Endpoints Overview
+
+| Endpoint | Method | Input | Output | Description |
+|---|---|---|---|---|
+| `/api/health` | `GET` | None | JSON | Returns service status and version. |
+| `/process` | `POST` | `multipart/form-data` | `application/epub+zip` | Processes PDF and downloads the converted EPUB. |
+| `/api/dry-run` | `POST` | `multipart/form-data` | `application/json` | Analyzes PDF and returns spam diagnostics without building an EPUB. |
+
+---
+
+#### Server Mode Query Parameters & Form Fields
+
+Both `POST /process` and `POST /api/dry-run` accept multipart form submissions with the following parameters:
+
+| Parameter | Type | In | Required | Default | Allowed Values | Description |
+|---|---|---|---|---|---|---|
+| `file` | Binary | Form-Data | **Yes** | — | Valid `.pdf` file | The input PDF document to clean and convert. |
+| `aggressiveness` | String | Query / Form | No | `BALANCED` | `CONSERVATIVE`, `BALANCED`, `AGGRESSIVE` | Controls detection thresholds for repetitive headers, footers, and logos. |
+| `layoutMode` | String | Query / Form | No | `REFLOWABLE` | `REFLOWABLE`, `FIXEDISH` | Determines structural output layout format for the EPUB. *(Applied to `/process`)* |
+| `whitelist` | String | Query / Form | No | *None* | Comma-separated strings | Phrases or keywords to explicitly protect from removal even if in margins. |
+| `mlEndpointUrl` | String | Query / Form | No | *None* | Valid HTTP/HTTPS URL | Optional external ML/CLIP logo classification microservice endpoint. |
+
+##### Parameter Details
+
+1. **`aggressiveness`**:
+   - **`CONSERVATIVE`**: Uses narrower header/footer margin thresholds (8% top, 7% bottom) and requires high cross-page repetition frequency (65% for text, 60% for images). Recommended for dense textbooks, research papers, or documents with valuable running headers where false positives must be strictly avoided.
+   - **`BALANCED`** *(Default)*: Uses standard margin thresholds (12% top, 10% bottom) and balanced frequency thresholds (45% for text, 40% for images). Recommended for general fiction, non-fiction, light novels, and manuals.
+   - **`AGGRESSIVE`**: Uses wider margin detection (16% top, 14% bottom) and lower frequency thresholds (30% for text, 25% for images). Ideal for heavily watermarked PDFs, scanlation releases, distributor-stamped books, or documents with persistent promotional slogans.
+
+2. **`layoutMode`**:
+   - **`REFLOWABLE`** *(Default)*: Packages content into semantic chapters (`chapter_001.xhtml`, etc.) with properly formatted paragraphs, dialogue indentation, preserved italics/bold styling, in-sequence illustrations, and table of contents. Optimized for e-readers (Kindle, Kobo, Apple Books, Calibre) and responsive reading.
+   - **`FIXEDISH`**: Packages content page-by-page (`page_001.xhtml`, etc.) preserving original PDF page boundaries (`Original Page N`). Ideal for textbooks, presentation slide decks, or documents where original page numbers must be cited directly.
+
+3. **`whitelist`**:
+   - Comma-separated list of phrases that will never be flagged as spam, regardless of position or recurrence frequency.
+   - *Example*: `whitelist=She Recommends the Harem,Chapter 1,Introduction`
+
+4. **`mlEndpointUrl`**:
+   - Optional URL for an external ML service implementing logo detection (e.g. CLIP). Borderline candidates will be posted to this endpoint for classification.
+   - *Example*: `mlEndpointUrl=http://localhost:5000/classify`
+
+---
+
+#### Server Mode Usage Examples
+
+##### Example 1: Standard Conversion (cURL)
+Convert a PDF using default balanced settings and reflowable layout, saving output to `book.epub`:
+
+```bash
+curl -X POST "http://localhost:8080/process" \
+  -F "file=@my_book.pdf" \
+  -o "my_book.cleaned.epub"
+```
+
+##### Example 2: Conservative Aggressiveness with Whitelist (cURL)
+Preserve running headers that contain the book title and author name:
+
+```bash
+curl -X POST "http://localhost:8080/process?aggressiveness=CONSERVATIVE&whitelist=Quantum%20Mechanics,David%20Griffiths" \
+  -F "file=@physics_textbook.pdf" \
+  -o "physics_textbook.cleaned.epub"
+```
+
+##### Example 3: Fixed-ish Layout Mode (cURL)
+Keep page-by-page segmentation for a reference manual:
+
+```bash
+curl -X POST "http://localhost:8080/process?layoutMode=FIXEDISH" \
+  -F "file=@user_manual.pdf" \
+  -o "user_manual.cleaned.epub"
+```
+
+##### Example 4: Dry-Run Diagnostics (cURL)
+Inspect spam detection statistics and flagged phrases as JSON without generating an EPUB binary:
+
+```bash
+curl -X POST "http://localhost:8080/api/dry-run?aggressiveness=BALANCED" \
+  -F "file=@my_book.pdf"
+```
+*Sample JSON Response:*
+```json
+{
+  "totalPages": 132,
+  "spamTextBlocksCount": 396,
+  "spamImagesCount": 396,
+  "flaggedPhrases": [
+    "Ella recomienda el harem",
+    "TAMASHI’S PROJECT"
+  ],
+  "flaggedImageDetails": [
+    "Image img-p1-1 (158x74) [REPEATED_LOGO_HASH (freq=100% on 132 pages), p.1]"
+  ]
+}
+```
+
+##### Example 5: PowerShell (`Invoke-RestMethod`)
+Convert a file and download directly on Windows PowerShell:
+
+```powershell
+$form = @{
+    file = Get-Item -Path ".\my_book.pdf"
+}
+Invoke-RestMethod -Uri "http://localhost:8080/process?aggressiveness=BALANCED&layoutMode=REFLOWABLE" `
+    -Method Post `
+    -Form $form `
+    -OutFile ".\my_book.cleaned.epub"
+```
 
 ---
 

@@ -22,5 +22,38 @@ public class Chapter {
     private List<String> paragraphs = new ArrayList<>();
     @Builder.Default
     private List<ImageBlock> images = new ArrayList<>();
+    @Builder.Default
+    private List<Element> elements = new ArrayList<>();
     private int startPage;
+
+    public void addParagraph(String paragraphHtml) {
+        if (paragraphHtml != null && !paragraphHtml.isBlank()) {
+            paragraphs.add(paragraphHtml);
+            elements.add(new ParagraphElement(paragraphHtml, false));
+        }
+    }
+
+    public void addImage(ImageBlock imageBlock) {
+        if (imageBlock != null) {
+            images.add(imageBlock);
+            elements.add(new ImageElement(imageBlock));
+        }
+    }
+
+    public sealed interface Element permits ParagraphElement, ImageElement {}
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static final class ParagraphElement implements Element {
+        private String text;
+        private boolean heading;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static final class ImageElement implements Element {
+        private ImageBlock image;
+    }
 }
