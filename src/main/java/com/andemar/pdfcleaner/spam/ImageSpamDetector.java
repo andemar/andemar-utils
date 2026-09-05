@@ -85,10 +85,16 @@ public class ImageSpamDetector {
                 float imgArea = bbox.getArea();
                 float areaRatio = pageArea > 0 ? (imgArea / pageArea) : 0;
 
-                // Safeguard: Large, prominent images (> 15% of page area or > 250px) that only appear once or twice are genuine figures!
-                boolean isLarge = areaRatio >= 0.15 || (img.getPixelWidth() >= 250 && img.getPixelHeight() >= 250);
-                if (isLarge && !bbox.isInTopMargin(pageHeight, headerMargin) && !bbox.isInBottomMargin(pageHeight, footerMargin)) {
-                    continue; // Safeguarded legitimate illustration
+                // Safeguard: Large, prominent images (> 10% of page area or >= 200px in both dimensions)
+                // that are not repeating logo clusters are genuine book illustrations, diagrams, or covers!
+                boolean isLarge = areaRatio >= 0.10f || (img.getPixelWidth() >= 200 && img.getPixelHeight() >= 200);
+                if (isLarge) {
+                    // Only consider spam if strictly confined entirely within a header or footer strip
+                    boolean strictlyInMarginStrip = (bbox.isInTopMargin(pageHeight, headerMargin) && bbox.getHeight() < pageHeight * (headerMargin + 0.05f)) ||
+                                                   (bbox.isInBottomMargin(pageHeight, footerMargin) && bbox.getHeight() < pageHeight * (footerMargin + 0.05f));
+                    if (!strictlyInMarginStrip) {
+                        continue; // Safeguarded legitimate illustration
+                    }
                 }
 
                 // Heuristic A: Tiny decorative icon/line in margins
@@ -107,8 +113,9 @@ public class ImageSpamDetector {
                     continue;
                 }
 
-                // Heuristic C: Direct proximity to an already detected spam text block (e.g. logo right next to "Downloaded from...")
-                if (isNearSpamTextBlock(bbox, page.getTextBlocks(), 30.0f)) {
+                // Heuristic C: Direct proximity to an already detected spam text block (e.g. small logo right next to "Downloaded from...")
+                // This heuristic strictly applies to small decorative icons/logos, never to large figures or illustrations!
+                if (!isLarge && isNearSpamTextBlock(bbox, page.getTextBlocks(), 30.0f)) {
                     img.markSpam("PROXIMITY_TO_SPAM_TEXT");
                     continue;
                 }

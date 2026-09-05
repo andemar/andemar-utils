@@ -64,6 +64,41 @@ class PdfCleanerControllerTest {
                 .andExpect(content().contentType("application/epub+zip"));
     }
 
+    @Test
+    void testProcessEndpointWithQueryParameters() throws Exception {
+        byte[] samplePdf = createMinimalPdf("HEADER LINE", "Sample Book Content Paragraph");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "novel.pdf", "application/pdf", samplePdf
+        );
+
+        mockMvc.perform(multipart("/process")
+                        .file(file)
+                        .param("aggressiveness", "CONSERVATIVE")
+                        .param("layoutMode", "FIXEDISH")
+                        .param("whitelist", "HEADER LINE,Important Note")
+                        .param("mlEndpointUrl", "http://localhost:5000/classify"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"novel.cleaned.epub\""))
+                .andExpect(content().contentType("application/epub+zip"));
+    }
+
+    @Test
+    void testDryRunEndpointWithQueryParameters() throws Exception {
+        byte[] samplePdf = createMinimalPdf("HEADER LINE", "Sample Book Content Paragraph");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "doc.pdf", "application/pdf", samplePdf
+        );
+
+        mockMvc.perform(multipart("/api/dry-run")
+                        .file(file)
+                        .param("aggressiveness", "AGGRESSIVE")
+                        .param("whitelist", "HEADER LINE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
     private byte[] createMinimalPdf(String headerText, String bodyText) throws Exception {
         try (PDDocument doc = new PDDocument()) {
             PDPage page = new PDPage();

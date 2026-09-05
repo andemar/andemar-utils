@@ -121,7 +121,7 @@ public class PdfAnalyzer {
         stripper.setSortByPosition(true);
         // Stripper internally invokes writeString
         stripper.getText(document);
-        return stripper.getCollectedBlocks();
+        return mergeSameLineBlocks(stripper.getCollectedBlocks());
     }
 
     private List<ImageBlock> extractImageBlocks(PDPage page, int pageNumber, float pageHeight) {
@@ -135,8 +135,63 @@ public class PdfAnalyzer {
         }
     }
 
+    private List<TextBlock> mergeSameLineBlocks(List<TextBlock> rawBlocks) {
+        if (rawBlocks == null || rawBlocks.size() <= 1) {
+            return rawBlocks != null ? rawBlocks : new ArrayList<>();
+        }
+
+        List<TextBlock> merged = new ArrayList<>();
+        TextBlock current = rawBlocks.get(0);
+
+        for (int i = 1; i < rawBlocks.size(); i++) {
+            TextBlock next = rawBlocks.get(i);
+            BoundingBox b1 = current.getBoundingBox();
+            BoundingBox b2 = next.getBoundingBox();
+
+            // Check if they share the same horizontal baseline (consecutive in stream)
+            boolean sameBaseline = Math.abs(b1.getY() - b2.getY()) <= 2.5f ||
+                                   Math.abs(b1.getCenterY() - b2.getCenterY()) <= 2.5f;
+
+            if (sameBaseline) {
+                float newX = Math.min(b1.getX(), b2.getX());
+                float newY = Math.min(b1.getY(), b2.getY());
+                float newRight = Math.max(b1.getRight(), b2.getRight());
+                float newBottom = Math.max(b1.getBottom(), b2.getBottom());
+
+                BoundingBox newBbox = BoundingBox.builder()
+                        .x(newX)
+                        .y(newY)
+                        .width(Math.max(0, newRight - newX))
+                        .height(Math.max(0, newBottom - newY))
+                        .build();
+
+                String separator = (current.getCleanText().endsWith("-") || next.getCleanText().startsWith(".") || next.getCleanText().startsWith(",")) ? "" : " ";
+                String newText = current.getCleanText() + separator + next.getCleanText();
+                String newFormatted = current.getFormattedText() + separator + next.getFormattedText();
+
+                current = TextBlock.builder()
+                        .text(newText.trim())
+                        .formattedText(newFormatted.trim())
+                        .boundingBox(newBbox)
+                        .pageNumber(current.getPageNumber())
+                        .fontSize(Math.max(current.getFontSize(), next.getFontSize()))
+                        .fontName(current.getFontName())
+                        .bold(current.isBold() || next.isBold())
+                        .italic(current.isItalic() || next.isItalic())
+                        .isSpam(false)
+                        .build();
+            } else {
+                merged.add(current);
+                current = next;
+            }
+        }
+        merged.add(current);
+        return merged;
+    }
+
     /**
-     * Custom PDFTextStripper that collects individual text lines with exact bounding boxes and font metadata.
+     * Custom PDFTextStripper that collects individual text lines with exact bounding boxes, font metadata,
+     * and formatted text (bold, italic spans).
      */
     private static class TextLineCollectorStripper extends PDFTextStripper {
         private final int pageNumber;
@@ -163,7 +218,12 @@ public class PdfAnalyzer {
 
             float fontSizeSum = 0;
             String fontName = "Default";
-            boolean isBold = false;
+            boolean hasBold = false;
+            boolean hasItalic = false;
+
+            StringBuilder formatted = new StringBuilder();
+            boolean currentBold = false;
+            boolean currentItalic = false;
 
             for (TextPosition tp : textPositions) {
                 float x = tp.getXDirAdj();
@@ -177,13 +237,52 @@ public class PdfAnalyzer {
                 if (y + height > maxY) maxY = y + height;
 
                 fontSizeSum += tp.getFontSizeInPt();
+                String fn = "";
                 if (tp.getFont() != null) {
                     fontName = tp.getFont().getName();
-                    if (fontName.toLowerCase().contains("bold")) {
-                        isBold = true;
-                    }
+                    fn = fontName.toLowerCase();
                 }
+
+                boolean charBold = fn.contains("bold");
+                boolean charItalic = fn.contains("italic") || fn.contains("oblique");
+
+                if (charBold) hasBold = true;
+                if (charItalic) hasItalic = true;
+
+                String unicode = tp.getUnicode();
+                if (unicode == null) continue;
+
+                if (unicode.isBlank()) {
+                    if (currentItalic) {
+                        formatted.append("</i>");
+                        currentItalic = false;
+                    }
+                    if (currentBold) {
+                        formatted.append("</b>");
+                        currentBold = false;
+                    }
+                    formatted.append(unicode);
+                    continue;
+                }
+
+                if (charBold != currentBold) {
+                    formatted.append(charBold ? "<b>" : "</b>");
+                    currentBold = charBold;
+                }
+
+                if (charItalic != currentItalic) {
+                    formatted.append(charItalic ? "<i>" : "</i>");
+                    currentItalic = charItalic;
+                }
+
+                if (unicode.equals("&")) formatted.append("&amp;");
+                else if (unicode.equals("<")) formatted.append("&lt;");
+                else if (unicode.equals(">")) formatted.append("&gt;");
+                else formatted.append(unicode);
             }
+
+            if (currentItalic) formatted.append("</i>");
+            if (currentBold) formatted.append("</b>");
 
             float avgFontSize = fontSizeSum / textPositions.size();
             float blockWidth = Math.max(0.0f, maxX - minX);
@@ -199,11 +298,13 @@ public class PdfAnalyzer {
 
             TextBlock block = TextBlock.builder()
                     .text(text.trim())
+                    .formattedText(formatted.toString().trim())
                     .boundingBox(bbox)
                     .pageNumber(pageNumber)
                     .fontSize(avgFontSize)
                     .fontName(fontName)
-                    .bold(isBold)
+                    .bold(hasBold)
+                    .italic(hasItalic)
                     .isSpam(false)
                     .build();
 

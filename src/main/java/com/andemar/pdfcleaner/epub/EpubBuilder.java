@@ -55,25 +55,44 @@ public class EpubBuilder {
             // 4. Collect and write all embedded images
             Map<String, String> imagePathMap = writeImages(zos, cleanedDoc);
 
-            // 5. Generate chapter/page XHTML documents
-            List<EpubSection> sections = generateSections(cleanedDoc, imagePathMap, config);
+            // 5. Detect Cover Image
+            String coverImageId = findCoverImageId(cleanedDoc);
+
+            // 6. Generate chapter/page XHTML documents
+            List<EpubSection> sections = generateSections(cleanedDoc, imagePathMap, config, coverImageId);
             for (EpubSection sec : sections) {
                 writeZipEntry(zos, "OEBPS/" + sec.filename, sec.xhtmlContent.getBytes(StandardCharsets.UTF_8));
             }
 
-            // 6. Generate and write Nav document (EPUB 3 nav.xhtml)
+            // 7. Generate and write Nav document (EPUB 3 nav.xhtml)
             String navContent = generateNavXhtml(cleanedDoc.getMetadata(), sections);
             writeZipEntry(zos, "OEBPS/nav.xhtml", navContent.getBytes(StandardCharsets.UTF_8));
 
-            // 7. Generate and write NCX document (EPUB 2 toc.ncx)
+            // 8. Generate and write NCX document (EPUB 2 toc.ncx)
             String ncxContent = generateTocNcx(cleanedDoc.getMetadata(), sections);
             writeZipEntry(zos, "OEBPS/toc.ncx", ncxContent.getBytes(StandardCharsets.UTF_8));
 
-            // 8. Generate and write Package OPF (content.opf)
-            String opfContent = generateContentOpf(cleanedDoc.getMetadata(), sections, imagePathMap);
+            // 9. Generate and write Package OPF (content.opf)
+            String opfContent = generateContentOpf(cleanedDoc.getMetadata(), sections, imagePathMap, coverImageId);
             writeZipEntry(zos, "OEBPS/content.opf", opfContent.getBytes(StandardCharsets.UTF_8));
         }
         return baos.toByteArray();
+    }
+
+    private String findCoverImageId(CleanedDocument cleanedDoc) {
+        if (cleanedDoc == null || cleanedDoc.getPages() == null) return null;
+        for (CleanedPage page : cleanedDoc.getPages()) {
+            if (page.getPageNumber() == 1 && !page.getCleanImageBlocks().isEmpty()) {
+                return page.getCleanImageBlocks().get(0).getId();
+            }
+        }
+        // Fallback: first clean image if on early page
+        for (CleanedPage page : cleanedDoc.getPages()) {
+            if (page.getPageNumber() <= 2 && !page.getCleanImageBlocks().isEmpty()) {
+                return page.getCleanImageBlocks().get(0).getId();
+            }
+        }
+        return null;
     }
 
     private void writeMimetypeEntry(ZipOutputStream zos) throws IOException {
@@ -119,7 +138,7 @@ public class EpubBuilder {
                 h1 { font-size: 1.75em; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.3em; }
                 h2 { font-size: 1.4em; }
                 p {
-                  margin: 0 0 1em 0;
+                  margin: 0 0 0.85em 0;
                   text-align: justify;
                   text-justify: inter-word;
                 }
@@ -138,6 +157,19 @@ public class EpubBuilder {
                   color: #64748b;
                   margin-top: 0.5em;
                   font-style: italic;
+                }
+                .cover-container {
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  min-height: 95vh;
+                  text-align: center;
+                }
+                .cover-img {
+                  max-width: 100%;
+                  max-height: 98vh;
+                  height: auto;
+                  object-fit: contain;
                 }
                 .page-container {
                   border-bottom: 1px dashed #cbd5e1;
@@ -174,8 +206,33 @@ public class EpubBuilder {
         return map;
     }
 
-    private List<EpubSection> generateSections(CleanedDocument cleanedDoc, Map<String, String> imageMap, CleanerConfig config) {
+    private List<EpubSection> generateSections(CleanedDocument cleanedDoc, Map<String, String> imageMap, CleanerConfig config, String coverImageId) {
         List<EpubSection> sections = new ArrayList<>();
+
+        // Add Cover Page if cover image exists
+        if (coverImageId != null && imageMap.containsKey(coverImageId)) {
+            String coverRelPath = imageMap.get(coverImageId);
+            String coverHtml = """
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <!DOCTYPE html>
+                    <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+                    <head>
+                    <title>Cover</title>
+                    <link rel="stylesheet" type="text/css" href="styles.css"/>
+                    <style type="text/css">
+                      body.cover-body { margin: 0; padding: 0; text-align: center; }
+                      img.cover-img { max-width: 100%%; max-height: 100vh; height: auto; object-fit: contain; }
+                    </style>
+                    </head>
+                    <body class="cover-body">
+                    <section epub:type="cover" class="cover-container">
+                      <img class="cover-img" src="%s" alt="Cover"/>
+                    </section>
+                    </body>
+                    </html>
+                    """.formatted(coverRelPath);
+            sections.add(new EpubSection("cover.xhtml", "Cover", coverHtml));
+        }
 
         if (config.getLayoutMode() == LayoutMode.FIXED_ISH) {
             // Page-by-page layout
@@ -190,7 +247,7 @@ public class EpubBuilder {
                 html.append("<div class=\"page-number-label\">Original Page ").append(page.getPageNumber()).append("</div>\n");
 
                 for (TextBlock tb : page.getCleanTextBlocks()) {
-                    html.append("<p>").append(escapeXml(tb.getCleanText())).append("</p>\n");
+                    html.append("<p>").append(tb.getFormattedText()).append("</p>\n");
                 }
 
                 for (ImageBlock img : page.getCleanImageBlocks()) {
@@ -209,7 +266,6 @@ public class EpubBuilder {
             // Reflowable Chapter-based layout
             List<Chapter> chapters = cleanedDoc.getChapters();
             if (chapters.isEmpty()) {
-                // Fallback chapter
                 chapters = List.of(Chapter.builder().chapterIndex(1).title("Document").build());
             }
 
@@ -224,15 +280,36 @@ public class EpubBuilder {
                 html.append("<section class=\"chapter\" id=\"ch-").append(ch.getChapterIndex()).append("\">\n");
                 html.append("<h1>").append(escapeXml(ch.getTitle())).append("</h1>\n");
 
-                for (String p : ch.getParagraphs()) {
-                    html.append("<p>").append(escapeXml(p)).append("</p>\n");
-                }
-
-                for (ImageBlock img : ch.getImages()) {
-                    String relPath = imageMap.get(img.getId());
-                    if (relPath != null) {
-                        html.append("<figure>\n  <img src=\"").append(relPath)
-                                .append("\" alt=\"Illustration\"/>\n</figure>\n");
+                if (!ch.getElements().isEmpty()) {
+                    for (Chapter.Element el : ch.getElements()) {
+                        if (el instanceof Chapter.ParagraphElement pe) {
+                            html.append("<p>").append(pe.getText()).append("</p>\n");
+                        } else if (el instanceof Chapter.ImageElement ie) {
+                            String imgId = ie.getImage().getId();
+                            // Skip re-rendering cover image inside front matter if already rendered in cover.xhtml
+                            if (coverImageId != null && coverImageId.equals(imgId)) {
+                                continue;
+                            }
+                            String relPath = imageMap.get(imgId);
+                            if (relPath != null) {
+                                html.append("<figure>\n  <img src=\"").append(relPath)
+                                        .append("\" alt=\"Illustration\"/>\n</figure>\n");
+                            }
+                        }
+                    }
+                } else {
+                    for (String p : ch.getParagraphs()) {
+                        html.append("<p>").append(p).append("</p>\n");
+                    }
+                    for (ImageBlock img : ch.getImages()) {
+                        if (coverImageId != null && coverImageId.equals(img.getId())) {
+                            continue;
+                        }
+                        String relPath = imageMap.get(img.getId());
+                        if (relPath != null) {
+                            html.append("<figure>\n  <img src=\"").append(relPath)
+                                    .append("\" alt=\"Illustration\"/>\n</figure>\n");
+                        }
                     }
                 }
 
@@ -283,7 +360,7 @@ public class EpubBuilder {
         return sb.toString();
     }
 
-    private String generateContentOpf(DocumentMetadata meta, List<EpubSection> sections, Map<String, String> imageMap) {
+    private String generateContentOpf(DocumentMetadata meta, List<EpubSection> sections, Map<String, String> imageMap, String coverImageId) {
         StringBuilder sb = new StringBuilder();
         String bookId = "urn:uuid:" + UUID.randomUUID();
         String modifiedTime = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
@@ -296,6 +373,9 @@ public class EpubBuilder {
         sb.append("  <dc:creator>").append(escapeXml(meta.getAuthor())).append("</dc:creator>\n");
         sb.append("  <dc:language>").append(escapeXml(meta.getLanguage())).append("</dc:language>\n");
         sb.append("  <meta property=\"dcterms:modified\">").append(modifiedTime).append("</meta>\n");
+        if (coverImageId != null && imageMap.containsKey(coverImageId)) {
+            sb.append("  <meta name=\"cover\" content=\"cover-image\"/>\n");
+        }
         sb.append("</metadata>\n");
 
         sb.append("<manifest>\n");
@@ -310,15 +390,21 @@ public class EpubBuilder {
         }
 
         int imgIdx = 0;
-        for (String relPath : imageMap.values()) {
+        for (Map.Entry<String, String> entry : imageMap.entrySet()) {
+            String imgId = entry.getKey();
+            String relPath = entry.getValue();
             String mime = relPath.endsWith(".jpg") ? "image/jpeg" : "image/png";
-            sb.append("  <item id=\"img_").append(imgIdx++).append("\" href=\"").append(relPath)
-                    .append("\" media-type=\"").append(mime).append("\"/>\n");
+            boolean isCover = imgId.equals(coverImageId);
+            String itemProps = isCover ? " properties=\"cover-image\"" : "";
+            String itemId = isCover ? "cover-image" : ("img_" + (imgIdx++));
+            sb.append("  <item id=\"").append(itemId).append("\" href=\"").append(relPath)
+                    .append("\" media-type=\"").append(mime).append("\"").append(itemProps).append("/>\n");
         }
         sb.append("</manifest>\n");
 
         sb.append("<spine toc=\"toc\">\n");
         for (int i = 0; i < sections.size(); i++) {
+            EpubSection sec = sections.get(i);
             sb.append("  <itemref idref=\"sec_").append(i).append("\"/>\n");
         }
         sb.append("</spine>\n");

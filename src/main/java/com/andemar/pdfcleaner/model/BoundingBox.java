@@ -40,18 +40,25 @@ public class BoundingBox {
 
     public boolean isInTopMargin(float pageHeight, float marginPercent) {
         float threshold = pageHeight * marginPercent;
-        return y <= threshold || getBottom() <= threshold;
+        float tolerance = Math.max(15.0f, pageHeight * 0.04f);
+        // Element must be positioned near the top AND not extend far past the margin threshold
+        return y <= threshold && getBottom() <= (threshold + tolerance);
     }
 
     public boolean isInBottomMargin(float pageHeight, float marginPercent) {
         float threshold = pageHeight * (1.0f - marginPercent);
-        return y >= threshold || getBottom() >= threshold;
+        float tolerance = Math.max(15.0f, pageHeight * 0.04f);
+        // Element must be positioned near the bottom AND not start far above the margin threshold
+        return getBottom() >= threshold && y >= (threshold - tolerance);
     }
 
     public boolean isInHorizontalMargin(float pageWidth, float marginPercent) {
         float leftThreshold = pageWidth * marginPercent;
         float rightThreshold = pageWidth * (1.0f - marginPercent);
-        return x <= leftThreshold || getRight() >= rightThreshold;
+        float tolerance = Math.max(15.0f, pageWidth * 0.04f);
+        boolean inLeft = (x <= leftThreshold) && (getRight() <= leftThreshold + tolerance);
+        boolean inRight = (getRight() >= rightThreshold) && (x >= rightThreshold - tolerance);
+        return inLeft || inRight;
     }
 
     public boolean isInCorner(float pageWidth, float pageHeight, float marginPercent) {

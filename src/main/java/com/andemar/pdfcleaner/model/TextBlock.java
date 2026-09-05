@@ -19,6 +19,8 @@ public class TextBlock {
     private float fontSize;
     private String fontName;
     private boolean bold;
+    private boolean italic;
+    private String formattedText;
     private boolean isSpam;
     private String spamReason;
 
@@ -29,5 +31,9 @@ public class TextBlock {
 
     public String getCleanText() {
         return text != null ? text.trim() : "";
+    }
+
+    public String getFormattedText() {
+        return formattedText != null && !formattedText.isBlank() ? formattedText.trim() : getCleanText();
     }
 }
