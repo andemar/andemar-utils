@@ -53,8 +53,8 @@ public class PdfCleaner {
 
         StringBuilder paragraphBuffer = new StringBuilder();
         String lastRawLine = null;
+        TextBlock lastTextBlock = null;
         float lastLineY = -1;
-        float estimatedLineHeight = 16.0f;
 
         for (PageModel rawPage : rawDocument.getPages()) {
             List<TextBlock> cleanTextBlocks = new ArrayList<>();
@@ -99,11 +99,15 @@ public class PdfCleaner {
             }
             pageItems.sort(Comparator.comparingDouble(PageItem::getY));
 
+            PageMetrics pageMetrics = calculatePageMetrics(cleanTextBlocks);
+            boolean isFirstItemOnPage = true;
+
             for (PageItem item : pageItems) {
                 if (item.isImage()) {
                     // Flush accumulated paragraph before placing image
                     flushParagraph(paragraphBuffer, currentChapter, config.getTextStructure());
                     lastRawLine = null;
+                    lastTextBlock = null;
                     lastLineY = -1;
 
                     currentChapter.addImage(item.image);
@@ -116,21 +120,21 @@ public class PdfCleaner {
                 if (cleanLine.isBlank()) continue;
 
                 float currentY = tb.getBoundingBox().getY();
-                float currentH = tb.getBoundingBox().getHeight();
-                if (currentH > 4.0f && currentH < 40.0f) {
-                    estimatedLineHeight = currentH * 1.5f;
-                }
-
                 boolean isHeading = isChapterHeading(tb);
 
                 if (isHeading) {
                     flushParagraph(paragraphBuffer, currentChapter, config.getTextStructure());
                     lastRawLine = null;
+                    lastTextBlock = null;
                     lastLineY = -1;
 
                     String headingTitle = cleanLine;
+                    String normalizedTitle = semanticProcessor.normalizeSpacedLetters(cleanLine);
+                    if (CHAPTER_HEADING_PATTERN.matcher(normalizedTitle).find() || tb.getFontSize() >= 13.8f) {
+                        headingTitle = normalizedTitle;
+                    }
                     if (config.getTextStructure() == com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC) {
-                        headingTitle = semanticProcessor.refineParagraph(cleanLine);
+                        headingTitle = semanticProcessor.refineParagraph(headingTitle);
                     }
 
                     // If current chapter already has elements, create a new chapter
@@ -153,38 +157,42 @@ public class PdfCleaner {
                     // In EXACT mode, do not merge across lines; preserve verbatim line formatting
                     currentChapter.addParagraph(formattedLine);
                     lastRawLine = cleanLine;
+                    lastTextBlock = tb;
                     lastLineY = currentY;
+                    isFirstItemOnPage = false;
                     continue;
                 }
 
                 // In SEMANTIC mode: check if we should flush paragraph before appending this line
                 float deltaY = (lastLineY >= 0) ? (currentY - lastLineY) : 0;
-                if (paragraphBuffer.length() > 0 && shouldFlushParagraph(lastRawLine, cleanLine, deltaY, estimatedLineHeight)) {
+                boolean isNewPage = isFirstItemOnPage && lastRawLine != null;
+
+                if (paragraphBuffer.length() > 0 && shouldFlushParagraph(
+                        lastRawLine,
+                        lastTextBlock,
+                        cleanLine,
+                        tb,
+                        deltaY,
+                        pageMetrics,
+                        isNewPage
+                )) {
                     flushParagraph(paragraphBuffer, currentChapter, config.getTextStructure());
                 }
 
-                // Append line to paragraph buffer
-                if (paragraphBuffer.length() > 0) {
-                    char lastChar = paragraphBuffer.charAt(paragraphBuffer.length() - 1);
-                    if (lastChar == '-') {
-                        // Word hyphenated across line break
-                        paragraphBuffer.setLength(paragraphBuffer.length() - 1);
-                        paragraphBuffer.append(formattedLine);
-                    } else {
-                        paragraphBuffer.append(" ").append(formattedLine);
-                    }
-                } else {
-                    paragraphBuffer.append(formattedLine);
-                }
+                // Append line using semantic line joining (handling word hyphenation across lines)
+                semanticProcessor.joinLines(paragraphBuffer, formattedLine);
 
                 lastRawLine = cleanLine;
+                lastTextBlock = tb;
                 lastLineY = currentY;
+                isFirstItemOnPage = false;
             }
 
-            // In fixed-ish mode or if page had illustrations only, flush paragraphs
+            // In fixed-ish mode, flush paragraphs per page
             if (config.getLayoutMode() == com.andemar.pdfcleaner.config.LayoutMode.FIXED_ISH) {
                 flushParagraph(paragraphBuffer, currentChapter, config.getTextStructure());
                 lastRawLine = null;
+                lastTextBlock = null;
                 lastLineY = -1;
             }
         }
@@ -219,57 +227,168 @@ public class PdfCleaner {
             return false;
         }
 
-        if (CHAPTER_HEADING_PATTERN.matcher(text).find()) {
+        String normalized = semanticProcessor.normalizeSpacedLetters(text);
+        if (CHAPTER_HEADING_PATTERN.matcher(text).find() || CHAPTER_HEADING_PATTERN.matcher(normalized).find()) {
             return true;
         }
 
-        // Prominent large font heading (e.g. >= 14pt) with short text
-        if (tb.getFontSize() >= 13.8f && text.length() < 70) {
+        // Prominent large font heading (e.g. >= 13.8pt) with short text
+        if (tb.getFontSize() >= 13.8f && (text.length() < 70 || normalized.length() < 70)) {
             if (!text.endsWith(".") || text.length() < 40) {
                 return true;
             }
         }
 
         // Bold line with font >= 12.5pt and short length
-        if (tb.isBold() && tb.getFontSize() >= 12.5f && text.length() < 50) {
+        if (tb.isBold() && tb.getFontSize() >= 12.5f && (text.length() < 50 || normalized.length() < 50)) {
             return true;
         }
 
         return false;
     }
 
-    private boolean shouldFlushParagraph(String prevRaw, String nextRaw, float deltaY, float lineHeight) {
-        if (prevRaw == null || prevRaw.isBlank()) {
+    private PageMetrics calculatePageMetrics(List<TextBlock> textBlocks) {
+        if (textBlocks == null || textBlocks.isEmpty()) {
+            return new PageMetrics(50.0f, 550.0f, 500.0f, 19.0f);
+        }
+
+        List<Float> xCoords = new ArrayList<>();
+        List<Float> rightCoords = new ArrayList<>();
+        List<Float> linePitches = new ArrayList<>();
+
+        TextBlock prev = null;
+        for (TextBlock tb : textBlocks) {
+            String clean = tb.getCleanText();
+            // Only consider substantial body lines (not tiny numbers or dividers)
+            if (clean.length() >= 15 && !semanticProcessor.isSceneDivider(clean)) {
+                xCoords.add(tb.getBoundingBox().getX());
+                rightCoords.add(tb.getBoundingBox().getRight());
+            }
+
+            if (prev != null) {
+                float dy = tb.getBoundingBox().getY() - prev.getBoundingBox().getY();
+                if (dy >= 8.0f && dy <= 45.0f) {
+                    linePitches.add(dy);
+                }
+            }
+            prev = tb;
+        }
+
+        float leftMargin = 50.0f;
+        if (!xCoords.isEmpty()) {
+            xCoords.sort(Float::compare);
+            int idx = Math.min((int) (xCoords.size() * 0.10f), xCoords.size() - 1);
+            leftMargin = xCoords.get(idx);
+        }
+
+        float maxRight = 550.0f;
+        if (!rightCoords.isEmpty()) {
+            rightCoords.sort(Float::compare);
+            int idx = Math.min((int) (rightCoords.size() * 0.90f), rightCoords.size() - 1);
+            maxRight = rightCoords.get(idx);
+        }
+
+        float maxLineWidth = Math.max(100.0f, maxRight - leftMargin);
+
+        float standardPitch = 19.0f;
+        if (!linePitches.isEmpty()) {
+            linePitches.sort(Float::compare);
+            standardPitch = linePitches.get(linePitches.size() / 2); // Median pitch
+        }
+
+        return new PageMetrics(leftMargin, maxRight, maxLineWidth, standardPitch);
+    }
+
+    private boolean shouldFlushParagraph(
+            String prevClean,
+            TextBlock prevTb,
+            String nextClean,
+            TextBlock nextTb,
+            float deltaY,
+            PageMetrics metrics,
+            boolean isNewPage
+    ) {
+        if (prevClean == null || prevClean.isBlank()) {
             return false;
         }
-        String prev = prevRaw.trim();
-        String next = nextRaw != null ? nextRaw.trim() : "";
+        if (nextClean == null || nextClean.isBlank()) {
+            return false;
+        }
 
-        // If next line starts with a dialogue opener, always start a new dialogue paragraph
-        if (!next.isEmpty() && DIALOGUE_OPENERS.indexOf(next.charAt(0)) >= 0) {
+        // 1. Scene dividers always start their own paragraph
+        if (semanticProcessor.isSceneDivider(nextClean) || semanticProcessor.isSceneDivider(prevClean)) {
             return true;
         }
 
-        // If there is significant vertical spacing between lines (blank line in PDF)
-        if (lineHeight > 0 && deltaY >= lineHeight * 1.35f) {
+        // 2. Dialogue opener on next line: dialogue turns start on a new paragraph
+        if (semanticProcessor.isDialogueOpener(nextClean)) {
             return true;
         }
 
-        // If previous line ends with sentence / dialogue closer
-        char lastChar = prev.charAt(prev.length() - 1);
-        if (SENTENCE_CLOSERS.indexOf(lastChar) >= 0 || prev.endsWith("...")) {
-            if (!next.isEmpty()) {
-                char firstChar = next.charAt(0);
-                // If next line starts with an uppercase letter or quote
-                if (Character.isUpperCase(firstChar) || DIALOGUE_OPENERS.indexOf(firstChar) >= 0) {
-                    if (prev.length() < 60 || deltaY >= lineHeight * 1.15f) {
-                        return true;
-                    }
-                }
+        // 3. Next line starts with lowercase letter: must be syntactic continuation of the previous sentence
+        if (!nextClean.isEmpty() && Character.isLowerCase(nextClean.charAt(0))) {
+            return false;
+        }
+
+        // 4. If previous line did NOT end with terminal punctuation,
+        // the sentence is grammatically incomplete and must not be cut off.
+        if (!semanticProcessor.isSentenceTerminated(prevClean)) {
+            return false;
+        }
+
+        // 5. Previous line DOES end with terminal punctuation.
+        // Check typographical paragraph break signals:
+
+        // A. Paragraph first-line indentation:
+        if (nextTb != null && metrics != null && nextTb.getBoundingBox().getX() >= metrics.leftMargin + 7.0f) {
+            return true;
+        }
+
+        // B. Vertical gap (blank line) between lines on the same page:
+        if (!isNewPage && metrics != null && deltaY >= metrics.standardLinePitch * 1.30f) {
+            return true;
+        }
+
+        // C. Short line ending a justified paragraph:
+        if (prevTb != null && metrics != null && prevTb.getBoundingBox().getWidth() < metrics.maxLineWidth * 0.82f) {
+            char firstChar = nextClean.charAt(0);
+            if (Character.isUpperCase(firstChar) || firstChar == '¿' || firstChar == '¡' || firstChar == '“') {
+                return true;
+            }
+        }
+
+        // D. Dialogue finished: previous was dialogue and next line is narration:
+        if (semanticProcessor.isDialogueOpener(prevClean)) {
+            char firstChar = nextClean.charAt(0);
+            if (Character.isUpperCase(firstChar) || firstChar == '¿' || firstChar == '¡') {
+                return true;
+            }
+        }
+
+        // E. Page boundary: previous line ended with terminal punctuation at page bottom
+        // and next line on new page starts with uppercase or dialogue opener:
+        if (isNewPage) {
+            char firstChar = nextClean.charAt(0);
+            if (Character.isUpperCase(firstChar) || firstChar == '¿' || firstChar == '¡') {
+                return true;
             }
         }
 
         return false;
+    }
+
+    private static class PageMetrics {
+        final float leftMargin;
+        final float maxRight;
+        final float maxLineWidth;
+        final float standardLinePitch;
+
+        PageMetrics(float leftMargin, float maxRight, float maxLineWidth, float standardLinePitch) {
+            this.leftMargin = leftMargin;
+            this.maxRight = maxRight;
+            this.maxLineWidth = maxLineWidth;
+            this.standardLinePitch = standardLinePitch;
+        }
     }
 
     private void flushParagraph(StringBuilder buffer, Chapter chapter, com.andemar.pdfcleaner.config.TextStructureMode structureMode) {

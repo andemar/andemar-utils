@@ -167,4 +167,90 @@ public class SheRecommendsHaremVerificationTest {
         assertTrue(tempEpubExact.exists() && tempEpubExact.length() > 100_000,
                 "Exact EPUB should be generated successfully with valid content");
     }
+
+    @Test
+    public void testUserSpecificSemanticExample() {
+        // User example:
+        // Line 1: "Si bien uno es consciente de las condiciones para ser odiado, no conoce muy bien las"
+        // Line 2: "cualidades para ser amado."
+        com.andemar.pdfcleaner.model.TextBlock tb1 = com.andemar.pdfcleaner.model.TextBlock.builder()
+                .text("Si bien uno es consciente de las condiciones para ser odiado, no conoce muy bien las")
+                .formattedText("Si bien uno es consciente de las condiciones para ser odiado, no conoce muy bien las")
+                .boundingBox(com.andemar.pdfcleaner.model.BoundingBox.builder()
+                        .x(85.0f).y(100.0f).width(427.0f).height(12.0f).build())
+                .fontSize(11.0f)
+                .pageNumber(1)
+                .build();
+
+        com.andemar.pdfcleaner.model.TextBlock tb2 = com.andemar.pdfcleaner.model.TextBlock.builder()
+                .text("cualidades para ser amado.")
+                .formattedText("cualidades para ser amado.")
+                .boundingBox(com.andemar.pdfcleaner.model.BoundingBox.builder()
+                        .x(85.0f).y(119.0f).width(185.0f).height(12.0f).build())
+                .fontSize(11.0f)
+                .pageNumber(1)
+                .build();
+
+        com.andemar.pdfcleaner.model.PageModel page = com.andemar.pdfcleaner.model.PageModel.builder()
+                .pageNumber(1)
+                .width(600.0f)
+                .height(800.0f)
+                .textBlocks(List.of(tb1, tb2))
+                .imageBlocks(List.of())
+                .build();
+
+        com.andemar.pdfcleaner.model.DocumentModel doc = com.andemar.pdfcleaner.model.DocumentModel.builder()
+                .metadata(com.andemar.pdfcleaner.model.DocumentMetadata.builder().title("Test").build())
+                .pages(List.of(page))
+                .build();
+
+        com.andemar.pdfcleaner.cleaner.PdfCleaner cleaner = new com.andemar.pdfcleaner.cleaner.PdfCleaner();
+
+        // 1. SEMANTIC mode must merge them into 1 grammatical paragraph without an enter after "muy bien las"
+        CleanerConfig semanticConfig = CleanerConfig.builder()
+                .textStructure(com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC)
+                .build();
+        CleanedDocument semanticDoc = cleaner.clean(doc, new SpamDetectionReport(), semanticConfig);
+        Chapter semChapter = semanticDoc.getChapters().get(0);
+        assertEquals(1, semChapter.getParagraphs().size(), "SEMANTIC mode must merge wrapped lines into a single paragraph");
+        assertEquals("Si bien uno es consciente de las condiciones para ser odiado, no conoce muy bien las cualidades para ser amado.",
+                semChapter.getParagraphs().get(0),
+                "Text must have no enter after 'muy bien las', and 'cualidades' must remain lowercase");
+
+        // 2. EXACT mode must preserve the 2 distinct lines verbatim
+        CleanerConfig exactConfig = CleanerConfig.builder()
+                .textStructure(com.andemar.pdfcleaner.config.TextStructureMode.EXACT)
+                .build();
+        CleanedDocument exactDoc = cleaner.clean(doc, new SpamDetectionReport(), exactConfig);
+        Chapter exactChapter = exactDoc.getChapters().get(0);
+        assertEquals(2, exactChapter.getParagraphs().size(), "EXACT mode must preserve verbatim lines as separate paragraphs");
+    }
+
+    @Test
+    public void testSheRecommendsHaremSemanticParagraphMerging() throws Exception {
+        File pdfFile = new File("src/main/resources/static/She Recommends the Harem - Volumen 03.pdf");
+        CleanerConfig configSemantic = CleanerConfig.builder()
+                .textStructure(com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC)
+                .build();
+        CleanerPipelineOrchestrator orchestrator = new CleanerPipelineOrchestrator();
+        File tempEpub = File.createTempFile("test-harem-merging-", ".epub");
+        tempEpub.deleteOnExit();
+
+        CleanerPipelineOrchestrator.CleanResult result = orchestrator.processFile(pdfFile, tempEpub, configSemantic);
+        CleanedDocument doc = result.getCleanedDocument();
+
+        // Search for the page 78 dialogue which spans across wrapped lines in the PDF
+        boolean foundMergedDialogue = false;
+        for (Chapter ch : doc.getChapters()) {
+            for (String p : ch.getParagraphs()) {
+                if (p.contains("Esto no compensa lo que hice o intenté hacer")) {
+                    foundMergedDialogue = true;
+                    System.out.println("Verified merged dialogue:\n" + p);
+                    assertTrue(p.toLowerCase().contains("o intenté hacer... y además, legalmente..."),
+                            "Dialogue should be seamlessly merged across wrapped lines");
+                }
+            }
+        }
+        assertTrue(foundMergedDialogue, "Should find seamlessly merged multi-line dialogue paragraph");
+    }
 }

@@ -71,4 +71,70 @@ public class SemanticTextProcessorTest {
         assertTrue(refined.contains("<i>Hola</i>"), "Should capitalize inside HTML tag at sentence start");
         assertTrue(refined.contains("<b>esto</b>"), "Should preserve bold tags intact");
     }
+
+    @Test
+    void testIsSentenceTerminated() {
+        // Incomplete sentences should not be terminated
+        assertFalse(processor.isSentenceTerminated("Si bien uno es consciente de las condiciones para ser odiado, no conoce muy bien las"));
+        assertFalse(processor.isSentenceTerminated("uno, dos,"));
+        assertFalse(processor.isSentenceTerminated("interro-"));
+        assertFalse(processor.isSentenceTerminated("palabra"));
+        assertFalse(processor.isSentenceTerminated("Capítulo 1:"));
+
+        // Abbreviations ending with dot should not be treated as sentence terminations
+        assertFalse(processor.isSentenceTerminated("el Dr."));
+        assertFalse(processor.isSentenceTerminated("ver pág."));
+        assertFalse(processor.isSentenceTerminated("vol."));
+
+        // Complete sentences should be terminated
+        assertTrue(processor.isSentenceTerminated("cualidades para ser amado."));
+        assertTrue(processor.isSentenceTerminated("“¿Qué pasa?”"));
+        assertTrue(processor.isSentenceTerminated("¡Increíble!"));
+        assertTrue(processor.isSentenceTerminated("Espera..."));
+        assertTrue(processor.isSentenceTerminated("Final de frase.»"));
+    }
+
+    @Test
+    void testIsDialogueOpener() {
+        assertTrue(processor.isDialogueOpener("— Hola, ¿cómo estás?"));
+        assertTrue(processor.isDialogueOpener("- Hola a todos"));
+        assertTrue(processor.isDialogueOpener("– Hola"));
+        assertTrue(processor.isDialogueOpener("“¿Qué pasa?”"));
+        assertTrue(processor.isDialogueOpener("—¿De verdad?"));
+
+        assertFalse(processor.isDialogueOpener("Hola"));
+        assertFalse(processor.isDialogueOpener("Era una mañana tranquila."));
+    }
+
+    @Test
+    void testIsSceneDivider() {
+        assertTrue(processor.isSceneDivider("***"));
+        assertTrue(processor.isSceneDivider("* * *"));
+        assertTrue(processor.isSceneDivider("---"));
+        assertTrue(processor.isSceneDivider("◆ ◆ ◆"));
+        assertTrue(processor.isSceneDivider("★★★"));
+
+        assertFalse(processor.isSceneDivider("Capítulo 1"));
+        assertFalse(processor.isSceneDivider("Texto normal"));
+    }
+
+    @Test
+    void testNormalizeSpacedLetters() {
+        assertEquals("Prólogo", processor.normalizeSpacedLetters("P r ó l o g o"));
+        assertEquals("Capítulo", processor.normalizeSpacedLetters("C a p í t u l o"));
+        assertEquals("Texto normal", processor.normalizeSpacedLetters("Texto normal"));
+    }
+
+    @Test
+    void testJoinLines() {
+        StringBuilder sb = new StringBuilder();
+        processor.joinLines(sb, "Primera línea");
+        processor.joinLines(sb, "segunda línea");
+        assertEquals("Primera línea segunda línea", sb.toString());
+
+        StringBuilder sbHyphen = new StringBuilder();
+        processor.joinLines(sbHyphen, "interro-");
+        processor.joinLines(sbHyphen, "guen al testigo.");
+        assertEquals("interroguen al testigo.", sbHyphen.toString());
+    }
 }

@@ -33,6 +33,27 @@ public class SemanticTextProcessor {
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS
     );
 
+    // Terminal punctuation pattern (supporting closing quotes, brackets, dashes)
+    private static final Pattern TERMINAL_PUNCTUATION_PATTERN = Pattern.compile(
+            "([.?!…](['\"”»’\\)]*)|\\.{3,}['\"”»’\\)]*)\\s*$"
+    );
+
+    // Common abbreviations that end with a dot but do not terminate a sentence
+    private static final Pattern ABBREVIATION_PATTERN = Pattern.compile(
+            "\\b(sr|sra|srta|dr|dra|prof|p[aá]g|vol|cap|ej|etc)\\.\\s*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS
+    );
+
+    // Dialogue opening prefixes (dashes, quotes, or dash followed by inverted Spanish marks/quotes)
+    private static final Pattern DIALOGUE_OPENER_PATTERN = Pattern.compile(
+            "^(—|[-–]\\s+|[-–][¿¡“\"«]|[“\"«])"
+    );
+
+    // Scene break / dividers
+    private static final Pattern SCENE_DIVIDER_PATTERN = Pattern.compile(
+            "^([*#~_—–-]\\s*){3,}$|^([◆◇★✦■□▲△▼▽●○]\\s*)+$"
+    );
+
     /**
      * Refines a single paragraph by applying semantic formatting rules:
      * - Capitalizes initial character and sentence beginnings.
@@ -46,6 +67,9 @@ public class SemanticTextProcessor {
         }
 
         String result = text.trim();
+        if (isSceneDivider(result)) {
+            return result;
+        }
 
         // 1. Normalize multiple spaces
         result = MULTIPLE_SPACES.matcher(result).replaceAll(" ");
@@ -216,5 +240,99 @@ public class SemanticTextProcessor {
         res = res.replace("<b> ", " <b>");
         res = res.replace(" </b>", "</b> ");
         return MULTIPLE_SPACES.matcher(res).replaceAll(" ");
+    }
+
+    /**
+     * Checks if the text ends with terminal punctuation (. ? ! … ...) or closing quotes/parentheses
+     * following terminal punctuation, excluding common abbreviations.
+     */
+    public boolean isSentenceTerminated(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        // Remove trailing HTML tags if any (e.g. </i>, </b>)
+        String clean = text.replaceAll("<[^>]+>\\s*$", "").trim();
+        if (clean.isEmpty()) {
+            return false;
+        }
+        if (ABBREVIATION_PATTERN.matcher(clean).find()) {
+            return false;
+        }
+        return TERMINAL_PUNCTUATION_PATTERN.matcher(clean).find();
+    }
+
+    /**
+     * Checks if the text begins with a dialogue opener (dash, quote, or dash followed by punctuation).
+     */
+    public boolean isDialogueOpener(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String clean = text.replaceAll("^<[^>]+>\\s*", "").trim();
+        return DIALOGUE_OPENER_PATTERN.matcher(clean).find();
+    }
+
+    /**
+     * Checks if the line represents a scene divider / break (e.g. ***, ---, ◆ ◆ ◆).
+     */
+    public boolean isSceneDivider(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String clean = text.replaceAll("<[^>]+>", "").trim();
+        return SCENE_DIVIDER_PATTERN.matcher(clean).matches();
+    }
+
+    /**
+     * Normalizes spaced-out heading letters, such as "P r ó l o g o" -> "Prólogo".
+     */
+    public String normalizeSpacedLetters(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String trimmed = text.trim();
+        String[] parts = trimmed.split("\\s+");
+        if (parts.length >= 3) {
+            boolean allSingleLetter = true;
+            for (String p : parts) {
+                if (p.length() != 1 || !Character.isLetter(p.charAt(0))) {
+                    allSingleLetter = false;
+                    break;
+                }
+            }
+            if (allSingleLetter) {
+                return String.join("", parts);
+            }
+        }
+        return trimmed;
+    }
+
+    /**
+     * Appends a wrapped line to the paragraph buffer, seamlessly merging hyphenated words across line breaks.
+     */
+    public void joinLines(StringBuilder buffer, String nextFormattedLine) {
+        if (nextFormattedLine == null || nextFormattedLine.isBlank()) {
+            return;
+        }
+        if (buffer.length() == 0) {
+            buffer.append(nextFormattedLine.trim());
+            return;
+        }
+
+        String nextTrimmed = nextFormattedLine.trim();
+        char lastChar = buffer.charAt(buffer.length() - 1);
+
+        // Check if buffer ends with a hyphen indicating hyphenation across line wrap
+        if (lastChar == '-' || lastChar == '–') {
+            // If preceded by a letter and next line begins with a lowercase letter, merge without hyphen or space
+            if (buffer.length() >= 2 && Character.isLetter(buffer.charAt(buffer.length() - 2))
+                    && !nextTrimmed.isEmpty() && Character.isLowerCase(nextTrimmed.charAt(0))) {
+                buffer.setLength(buffer.length() - 1);
+                buffer.append(nextTrimmed);
+                return;
+            }
+        }
+
+        buffer.append(" ").append(nextTrimmed);
     }
 }
