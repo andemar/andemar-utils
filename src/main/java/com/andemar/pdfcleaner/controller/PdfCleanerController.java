@@ -56,14 +56,16 @@ public class PdfCleanerController {
             @RequestParam(value = "textStructure", required = false) String textStructure,
             @RequestParam(value = "structure", required = false) String structure,
             @RequestParam(value = "whitelist", required = false) String whitelist,
-            @RequestParam(value = "mlEndpointUrl", required = false) String mlEndpointUrl
+            @RequestParam(value = "mlEndpointUrl", required = false) String mlEndpointUrl,
+            @RequestParam(value = "title", required = false) String title,
+            @RequestParam(value = "author", required = false) String author
     ) throws IOException {
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body(null);
         }
 
-        CleanerConfig config = buildConfig(aggressiveness, layoutMode, textStructure, structure, whitelist, mlEndpointUrl, false);
-        CleanerPipelineOrchestrator.CleanResult result = orchestrator.processBytes(file.getBytes(), config);
+        CleanerConfig config = buildConfig(aggressiveness, layoutMode, textStructure, structure, whitelist, mlEndpointUrl, title, author, false);
+        CleanerPipelineOrchestrator.CleanResult result = orchestrator.processBytes(file.getBytes(), file.getOriginalFilename(), config);
 
         String originalName = file.getOriginalFilename();
         String outName = "cleaned.epub";
@@ -88,19 +90,21 @@ public class PdfCleanerController {
             @RequestParam(value = "textStructure", required = false) String textStructure,
             @RequestParam(value = "structure", required = false) String structure,
             @RequestParam(value = "whitelist", required = false) String whitelist,
-            @RequestParam(value = "mlEndpointUrl", required = false) String mlEndpointUrl
+            @RequestParam(value = "mlEndpointUrl", required = false) String mlEndpointUrl,
+            @RequestParam(value = "title", required = false) String title,
+            @RequestParam(value = "author", required = false) String author
     ) throws IOException {
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body(null);
         }
 
-        CleanerConfig config = buildConfig(aggressiveness, "REFLOWABLE", textStructure, structure, whitelist, mlEndpointUrl, true);
-        CleanerPipelineOrchestrator.CleanResult result = orchestrator.processBytes(file.getBytes(), config);
+        CleanerConfig config = buildConfig(aggressiveness, "REFLOWABLE", textStructure, structure, whitelist, mlEndpointUrl, title, author, true);
+        CleanerPipelineOrchestrator.CleanResult result = orchestrator.processBytes(file.getBytes(), file.getOriginalFilename(), config);
 
         return ResponseEntity.ok(result.getReport());
     }
 
-    private CleanerConfig buildConfig(String aggStr, String modeStr, String textStructure, String structure, String whitelist, String mlUrl, boolean dryRun) {
+    private CleanerConfig buildConfig(String aggStr, String modeStr, String textStructure, String structure, String whitelist, String mlUrl, String title, String author, boolean dryRun) {
         Aggressiveness agg = Aggressiveness.BALANCED;
         try {
             agg = Aggressiveness.valueOf(aggStr.toUpperCase());
@@ -122,6 +126,8 @@ public class PdfCleanerController {
                 .layoutMode(mode)
                 .textStructure(textStruct)
                 .mlEndpointUrl(mlUrl)
+                .title(title)
+                .author(author)
                 .dryRun(dryRun)
                 .build();
 

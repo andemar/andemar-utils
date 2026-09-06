@@ -63,6 +63,10 @@ public class Clean2EpubCli {
                     config.setMlEndpointUrl(arg.substring("--ml-endpoint-url=".length()));
                 } else if (arg.startsWith("--whitelist-phrase=")) {
                     config.addWhitelistPhrase(arg.substring("--whitelist-phrase=".length()));
+                } else if (arg.startsWith("--title=")) {
+                    config.setTitle(arg.substring("--title=".length()));
+                } else if (arg.startsWith("--author=")) {
+                    config.setAuthor(arg.substring("--author=".length()));
                 } else if (arg.equals("--dry-run")) {
                     config.setDryRun(true);
                 } else if (arg.equals("-o") || arg.equals("--output")) {
@@ -146,6 +150,8 @@ public class Clean2EpubCli {
                                                  EXACT: Preserves exact original line breaks, formatting and punctuation
                   --exact-structure              Shorthand flag to keep exact original text structure
                   --semantic-structure           Shorthand flag to apply semantic language structure
+                  --title=<title>                Specify custom book title (default: derived from input file name)
+                  --author=<author>              Specify book author (default: from PDF metadata or Unknown)
                   --dry-run                      Run spam detection and output diagnostic report without writing EPUB
                   --report-path=<file.txt>       Write spam detection report to text file
                   --whitelist-phrase=<phrase>    Preserve specific header text or chapter title

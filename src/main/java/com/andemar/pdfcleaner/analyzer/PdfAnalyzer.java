@@ -38,23 +38,65 @@ public class PdfAnalyzer {
 
     public DocumentModel analyze(File pdfFile) throws IOException {
         try (PDDocument document = Loader.loadPDF(pdfFile)) {
-            return extractDocumentModel(document);
+            String fallbackTitle = pdfFile != null ? deriveTitleFromFilename(pdfFile.getName()) : null;
+            return extractDocumentModel(document, fallbackTitle);
         }
     }
 
     public DocumentModel analyze(byte[] pdfBytes) throws IOException {
+        return analyze(pdfBytes, (String) null);
+    }
+
+    public DocumentModel analyze(byte[] pdfBytes, String filenameOrTitle) throws IOException {
         try (PDDocument document = Loader.loadPDF(pdfBytes)) {
-            return extractDocumentModel(document);
+            String fallbackTitle = filenameOrTitle != null ? deriveTitleFromFilename(filenameOrTitle) : null;
+            return extractDocumentModel(document, fallbackTitle);
         }
     }
 
     public DocumentModel analyze(InputStream inputStream) throws IOException {
+        return analyze(inputStream, null);
+    }
+
+    public DocumentModel analyze(InputStream inputStream, String filenameOrTitle) throws IOException {
         byte[] bytes = inputStream.readAllBytes();
-        return analyze(bytes);
+        return analyze(bytes, filenameOrTitle);
+    }
+
+    public static String deriveTitleFromFilename(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return null;
+        }
+        int lastSlash = Math.max(filename.lastIndexOf('/'), filename.lastIndexOf('\\'));
+        String name = lastSlash >= 0 ? filename.substring(lastSlash + 1) : filename;
+        int lastDot = name.lastIndexOf('.');
+        if (lastDot > 0) {
+            name = name.substring(0, lastDot);
+        }
+        name = name.trim();
+        return name.isEmpty() ? null : name;
+    }
+
+    public static boolean isPlaceholderTitle(String title) {
+        if (title == null || title.isBlank()) {
+            return true;
+        }
+        String clean = title.trim();
+        return clean.equalsIgnoreCase("Untitled")
+                || clean.equalsIgnoreCase("Untitled Document")
+                || clean.equalsIgnoreCase("Sin título")
+                || clean.equalsIgnoreCase("Documento sin título")
+                || clean.equalsIgnoreCase("Document")
+                || clean.equalsIgnoreCase("PDF Document")
+                || clean.toLowerCase().startsWith("microsoft word -");
     }
 
     private DocumentModel extractDocumentModel(PDDocument document) throws IOException {
-        DocumentMetadata metadata = extractMetadata(document);
+        return extractDocumentModel(document, null);
+    }
+
+    private DocumentModel extractDocumentModel(PDDocument document, String fallbackTitle) throws IOException {
+        DocumentMetadata metadata = extractMetadata(document, fallbackTitle);
         List<PageModel> pages = new ArrayList<>();
 
         int totalPages = document.getNumberOfPages();
@@ -87,21 +129,36 @@ public class PdfAnalyzer {
     }
 
     private DocumentMetadata extractMetadata(PDDocument document) {
+        return extractMetadata(document, null);
+    }
+
+    private DocumentMetadata extractMetadata(PDDocument document, String fallbackTitle) {
         PDDocumentInformation info = document.getDocumentInformation();
-        String title = "Untitled Document";
+        String title = null;
         String author = "Unknown";
         String subject = null;
         String producer = null;
 
         if (info != null) {
             if (info.getTitle() != null && !info.getTitle().isBlank()) {
-                title = info.getTitle().trim();
+                String candidate = info.getTitle().trim();
+                if (!isPlaceholderTitle(candidate)) {
+                    title = candidate;
+                }
             }
             if (info.getAuthor() != null && !info.getAuthor().isBlank()) {
                 author = info.getAuthor().trim();
             }
             subject = info.getSubject();
             producer = info.getProducer();
+        }
+
+        if (title == null || title.isBlank()) {
+            if (fallbackTitle != null && !fallbackTitle.isBlank() && !isPlaceholderTitle(fallbackTitle)) {
+                title = fallbackTitle.trim();
+            } else {
+                title = "Untitled Document";
+            }
         }
 
         return DocumentMetadata.builder()

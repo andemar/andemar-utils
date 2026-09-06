@@ -5,6 +5,7 @@ import com.andemar.pdfcleaner.cleaner.PdfCleaner;
 import com.andemar.pdfcleaner.config.CleanerConfig;
 import com.andemar.pdfcleaner.epub.EpubBuilder;
 import com.andemar.pdfcleaner.model.CleanedDocument;
+import com.andemar.pdfcleaner.model.DocumentMetadata;
 import com.andemar.pdfcleaner.model.DocumentModel;
 import com.andemar.pdfcleaner.model.SpamDetectionReport;
 import com.andemar.pdfcleaner.spam.SpamDetectionEngine;
@@ -51,10 +52,11 @@ public class CleanerPipelineOrchestrator {
         // 1. Analyze
         log.info("[Pipeline: 1/4] Analyzing document structure and geometry...");
         DocumentModel docModel = analyzer.analyze(inputFile);
+        applyConfigMetadata(docModel, config, inputFile != null ? inputFile.getName() : null);
         int totalTextBlocks = docModel.getPages().stream().mapToInt(p -> p.getTextBlocks().size()).sum();
         int totalImages = docModel.getPages().stream().mapToInt(p -> p.getImageBlocks().size()).sum();
-        log.info("[Pipeline: 1/4] Extracted {} pages ({} text blocks, {} image blocks).",
-                docModel.getPageCount(), totalTextBlocks, totalImages);
+        log.info("[Pipeline: 1/4] Extracted {} pages ({} text blocks, {} image blocks). Document Title: '{}'",
+                docModel.getPageCount(), totalTextBlocks, totalImages, docModel.getMetadata().getTitle());
 
         // 2. Detect Spam
         log.info("[Pipeline: 2/4] Running repeating spam pattern detection...");
@@ -99,22 +101,30 @@ public class CleanerPipelineOrchestrator {
      * In-memory processing for REST API endpoints.
      */
     public CleanResult processBytes(byte[] pdfBytes, CleanerConfig config) throws IOException {
+        return processBytes(pdfBytes, null, config);
+    }
+
+    /**
+     * In-memory processing for REST API endpoints with original filename support.
+     */
+    public CleanResult processBytes(byte[] pdfBytes, String originalFilename, CleanerConfig config) throws IOException {
         if (pdfBytes == null || pdfBytes.length < 5) {
             throw new IllegalArgumentException("PDF byte stream is empty or too short.");
         }
 
         long startTime = System.currentTimeMillis();
         long sizeKb = pdfBytes.length / 1024;
-        log.info("[Pipeline] Ingesting in-memory PDF payload ({} KB) | Aggressiveness: {} | Layout: {} | TextStructure: {}",
-                sizeKb, config.getAggressiveness(), config.getLayoutMode(), config.getTextStructure());
+        log.info("[Pipeline] Ingesting in-memory PDF payload ({} KB) | Filename: '{}' | Aggressiveness: {} | Layout: {} | TextStructure: {}",
+                sizeKb, originalFilename, config.getAggressiveness(), config.getLayoutMode(), config.getTextStructure());
 
         // 1. Analyze
         log.info("[Pipeline: 1/4] Analyzing in-memory PDF pages...");
-        DocumentModel docModel = analyzer.analyze(pdfBytes);
+        DocumentModel docModel = analyzer.analyze(pdfBytes, originalFilename);
+        applyConfigMetadata(docModel, config, originalFilename);
         int totalTextBlocks = docModel.getPages().stream().mapToInt(p -> p.getTextBlocks().size()).sum();
         int totalImages = docModel.getPages().stream().mapToInt(p -> p.getImageBlocks().size()).sum();
-        log.info("[Pipeline: 1/4] Extracted {} pages ({} text blocks, {} image blocks).",
-                docModel.getPageCount(), totalTextBlocks, totalImages);
+        log.info("[Pipeline: 1/4] Extracted {} pages ({} text blocks, {} image blocks). Document Title: '{}'",
+                docModel.getPageCount(), totalTextBlocks, totalImages, docModel.getMetadata().getTitle());
 
         // 2. Detect Spam
         log.info("[Pipeline: 2/4] Running spam detection...");
@@ -144,6 +154,30 @@ public class CleanerPipelineOrchestrator {
         CleanResult result = new CleanResult(cleanedDoc, report, duration, null);
         result.setEpubBytes(epubBytes);
         return result;
+    }
+
+    private void applyConfigMetadata(DocumentModel docModel, CleanerConfig config, String filename) {
+        if (docModel == null || docModel.getMetadata() == null) {
+            return;
+        }
+        DocumentMetadata meta = docModel.getMetadata();
+
+        // 1. Title precedence: explicit config title -> existing valid metadata title -> derived from filename -> fallback
+        if (config != null && config.getTitle() != null && !config.getTitle().isBlank()) {
+            meta.setTitle(config.getTitle().trim());
+        } else if (meta.getTitle() == null || meta.getTitle().isBlank() || PdfAnalyzer.isPlaceholderTitle(meta.getTitle())) {
+            String derived = PdfAnalyzer.deriveTitleFromFilename(filename);
+            if (derived != null && !derived.isBlank()) {
+                meta.setTitle(derived);
+            } else {
+                meta.setTitle("Untitled Document");
+            }
+        }
+
+        // 2. Author precedence: explicit config author -> existing author
+        if (config != null && config.getAuthor() != null && !config.getAuthor().isBlank()) {
+            meta.setAuthor(config.getAuthor().trim());
+        }
     }
 
     private void validatePdfFile(File file) throws IOException {

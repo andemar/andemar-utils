@@ -11,8 +11,14 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -58,10 +64,41 @@ class PdfCleanerControllerTest {
                 "file", "book.pdf", "application/pdf", samplePdf
         );
 
-        mockMvc.perform(multipart("/process").file(file))
+        byte[] epubBytes = mockMvc.perform(multipart("/process").file(file))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"book.cleaned.epub\""))
-                .andExpect(content().contentType("application/epub+zip"));
+                .andExpect(content().contentType("application/epub+zip"))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
+
+        // Verify that EPUB metadata dc:title was derived from filename "book.pdf" -> "book"
+        String opf = extractOpfFromEpub(epubBytes);
+        assertTrue(opf.contains("<dc:title>book</dc:title>"));
+        assertFalse(opf.contains("<dc:title>Untitled Document</dc:title>"));
+    }
+
+    @Test
+    void testProcessEndpointWithCustomTitleAndAuthor() throws Exception {
+        byte[] samplePdf = createMinimalPdf("HEADER LINE", "Sample Book Content Paragraph");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "raw_scan_001.pdf", "application/pdf", samplePdf
+        );
+
+        byte[] epubBytes = mockMvc.perform(multipart("/process")
+                        .file(file)
+                        .param("title", "Overridden Novel Title")
+                        .param("author", "Famous Author"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"raw_scan_001.cleaned.epub\""))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
+
+        String opf = extractOpfFromEpub(epubBytes);
+        assertTrue(opf.contains("<dc:title>Overridden Novel Title</dc:title>"));
+        assertTrue(opf.contains("<dc:creator>Famous Author</dc:creator>"));
     }
 
     @Test
@@ -132,5 +169,17 @@ class PdfCleanerControllerTest {
             doc.save(baos);
             return baos.toByteArray();
         }
+    }
+
+    private String extractOpfFromEpub(byte[] epubBytes) throws Exception {
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(epubBytes))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if ("OEBPS/content.opf".equals(entry.getName())) {
+                    return new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+        }
+        return "";
     }
 }
