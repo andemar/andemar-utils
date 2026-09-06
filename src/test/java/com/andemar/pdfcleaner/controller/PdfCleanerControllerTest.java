@@ -76,8 +76,17 @@ class PdfCleanerControllerTest {
                         .file(file)
                         .param("aggressiveness", "CONSERVATIVE")
                         .param("layoutMode", "FIXEDISH")
+                        .param("textStructure", "EXACT")
                         .param("whitelist", "HEADER LINE,Important Note")
                         .param("mlEndpointUrl", "http://localhost:5000/classify"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"novel.cleaned.epub\""))
+                .andExpect(content().contentType("application/epub+zip"));
+
+        // Also test with SEMANTIC and structure alias
+        mockMvc.perform(multipart("/process")
+                        .file(file)
+                        .param("structure", "SEMANTIC"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"novel.cleaned.epub\""))
                 .andExpect(content().contentType("application/epub+zip"));

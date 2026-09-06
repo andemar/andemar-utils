@@ -53,6 +53,8 @@ public class PdfCleanerController {
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "aggressiveness", defaultValue = "BALANCED") String aggressiveness,
             @RequestParam(value = "layoutMode", defaultValue = "REFLOWABLE") String layoutMode,
+            @RequestParam(value = "textStructure", required = false) String textStructure,
+            @RequestParam(value = "structure", required = false) String structure,
             @RequestParam(value = "whitelist", required = false) String whitelist,
             @RequestParam(value = "mlEndpointUrl", required = false) String mlEndpointUrl
     ) throws IOException {
@@ -60,7 +62,7 @@ public class PdfCleanerController {
             return ResponseEntity.badRequest().body(null);
         }
 
-        CleanerConfig config = buildConfig(aggressiveness, layoutMode, whitelist, mlEndpointUrl, false);
+        CleanerConfig config = buildConfig(aggressiveness, layoutMode, textStructure, structure, whitelist, mlEndpointUrl, false);
         CleanerPipelineOrchestrator.CleanResult result = orchestrator.processBytes(file.getBytes(), config);
 
         String originalName = file.getOriginalFilename();
@@ -83,6 +85,8 @@ public class PdfCleanerController {
     public ResponseEntity<SpamDetectionReport> dryRun(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "aggressiveness", defaultValue = "BALANCED") String aggressiveness,
+            @RequestParam(value = "textStructure", required = false) String textStructure,
+            @RequestParam(value = "structure", required = false) String structure,
             @RequestParam(value = "whitelist", required = false) String whitelist,
             @RequestParam(value = "mlEndpointUrl", required = false) String mlEndpointUrl
     ) throws IOException {
@@ -90,13 +94,13 @@ public class PdfCleanerController {
             return ResponseEntity.badRequest().body(null);
         }
 
-        CleanerConfig config = buildConfig(aggressiveness, "REFLOWABLE", whitelist, mlEndpointUrl, true);
+        CleanerConfig config = buildConfig(aggressiveness, "REFLOWABLE", textStructure, structure, whitelist, mlEndpointUrl, true);
         CleanerPipelineOrchestrator.CleanResult result = orchestrator.processBytes(file.getBytes(), config);
 
         return ResponseEntity.ok(result.getReport());
     }
 
-    private CleanerConfig buildConfig(String aggStr, String modeStr, String whitelist, String mlUrl, boolean dryRun) {
+    private CleanerConfig buildConfig(String aggStr, String modeStr, String textStructure, String structure, String whitelist, String mlUrl, boolean dryRun) {
         Aggressiveness agg = Aggressiveness.BALANCED;
         try {
             agg = Aggressiveness.valueOf(aggStr.toUpperCase());
@@ -107,9 +111,16 @@ public class PdfCleanerController {
             mode = LayoutMode.FIXED_ISH;
         }
 
+        com.andemar.pdfcleaner.config.TextStructureMode textStruct = com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC;
+        String structChoice = textStructure != null ? textStructure : structure;
+        if (structChoice != null && (structChoice.equalsIgnoreCase("EXACT") || structChoice.equalsIgnoreCase("RAW"))) {
+            textStruct = com.andemar.pdfcleaner.config.TextStructureMode.EXACT;
+        }
+
         CleanerConfig config = CleanerConfig.builder()
                 .aggressiveness(agg)
                 .layoutMode(mode)
+                .textStructure(textStruct)
                 .mlEndpointUrl(mlUrl)
                 .dryRun(dryRun)
                 .build();

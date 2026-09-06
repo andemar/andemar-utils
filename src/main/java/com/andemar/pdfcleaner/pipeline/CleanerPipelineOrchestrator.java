@@ -43,40 +43,54 @@ public class CleanerPipelineOrchestrator {
     public CleanResult processFile(File inputFile, File outputFile, CleanerConfig config) throws IOException {
         validatePdfFile(inputFile);
 
-        log.info("Starting PDF cleaning pipeline for: {}", inputFile.getAbsolutePath());
         long startTime = System.currentTimeMillis();
+        long fileSizeKb = inputFile.length() / 1024;
+        log.info("[Pipeline] Starting PDF conversion for '{}' ({} KB) | Aggressiveness: {} | Layout: {} | TextStructure: {}",
+                inputFile.getName(), fileSizeKb, config.getAggressiveness(), config.getLayoutMode(), config.getTextStructure());
 
         // 1. Analyze
+        log.info("[Pipeline: 1/4] Analyzing document structure and geometry...");
         DocumentModel docModel = analyzer.analyze(inputFile);
-        log.info("Extracted {} pages from PDF.", docModel.getPageCount());
+        int totalTextBlocks = docModel.getPages().stream().mapToInt(p -> p.getTextBlocks().size()).sum();
+        int totalImages = docModel.getPages().stream().mapToInt(p -> p.getImageBlocks().size()).sum();
+        log.info("[Pipeline: 1/4] Extracted {} pages ({} text blocks, {} image blocks).",
+                docModel.getPageCount(), totalTextBlocks, totalImages);
 
         // 2. Detect Spam
+        log.info("[Pipeline: 2/4] Running repeating spam pattern detection...");
         SpamDetectionEngine spamEngine = SpamDetectionEngine.create(config);
         SpamDetectionReport report = spamEngine.process(docModel, config);
-        log.info("Spam detection completed: {} spam text lines, {} spam logos.",
+        log.info("[Pipeline: 2/4] Spam detection complete: flagged {} text blocks, {} repeating logo watermarks.",
                 report.getSpamTextBlocksCount(), report.getSpamImagesCount());
 
         // Optional Dry-run report export
         if (config.getReportPath() != null && !config.getReportPath().isBlank()) {
             File reportFile = new File(config.getReportPath());
             Files.writeString(reportFile.toPath(), report.toFormattedSummary());
-            log.info("Dry-run report saved to: {}", reportFile.getAbsolutePath());
+            log.info("[Pipeline] Dry-run diagnostic report written to: {}", reportFile.getAbsolutePath());
         }
 
-        // 3. Clean
+        // 3. Clean & Structure
+        log.info("[Pipeline: 3/4] Cleaning content and applying text structure [{}]...", config.getTextStructure());
         CleanedDocument cleanedDoc = cleaner.clean(docModel, report, config);
+        int totalParagraphs = cleanedDoc.getChapters().stream().mapToInt(c -> c.getParagraphs().size()).sum();
+        log.info("[Pipeline: 3/4] Text structuring complete: organized {} chapters with {} formatted paragraphs.",
+                cleanedDoc.getChapters().size(), totalParagraphs);
 
         // 4. Build EPUB (unless pure dry-run requested without output)
         byte[] epubBytes = null;
-        if (!config.isDryRun() || outputFile != null) {
+        if (!config.isDryRun()) {
             File targetOut = outputFile != null ? outputFile : deriveDefaultOutputFile(inputFile);
+            log.info("[Pipeline: 4/4] Packaging EPUB archive...");
             epubBuilder.build(cleanedDoc, targetOut, config);
-            log.info("Successfully generated clean EPUB: {} ({} bytes)",
-                    targetOut.getAbsolutePath(), targetOut.length());
+            log.info("[Pipeline: 4/4] EPUB successfully generated: {} ({} KB)",
+                    targetOut.getAbsolutePath(), targetOut.length() / 1024);
+        } else {
+            log.info("[Pipeline: 4/4] Dry-run mode: skipped EPUB archive generation.");
         }
 
         long duration = System.currentTimeMillis() - startTime;
-        log.info("Pipeline completed in {} ms.", duration);
+        log.info("[Pipeline] Completed entire pipeline in {} ms.", duration);
 
         return new CleanResult(cleanedDoc, report, duration, outputFile);
     }
@@ -90,17 +104,43 @@ public class CleanerPipelineOrchestrator {
         }
 
         long startTime = System.currentTimeMillis();
+        long sizeKb = pdfBytes.length / 1024;
+        log.info("[Pipeline] Ingesting in-memory PDF payload ({} KB) | Aggressiveness: {} | Layout: {} | TextStructure: {}",
+                sizeKb, config.getAggressiveness(), config.getLayoutMode(), config.getTextStructure());
+
+        // 1. Analyze
+        log.info("[Pipeline: 1/4] Analyzing in-memory PDF pages...");
         DocumentModel docModel = analyzer.analyze(pdfBytes);
+        int totalTextBlocks = docModel.getPages().stream().mapToInt(p -> p.getTextBlocks().size()).sum();
+        int totalImages = docModel.getPages().stream().mapToInt(p -> p.getImageBlocks().size()).sum();
+        log.info("[Pipeline: 1/4] Extracted {} pages ({} text blocks, {} image blocks).",
+                docModel.getPageCount(), totalTextBlocks, totalImages);
+
+        // 2. Detect Spam
+        log.info("[Pipeline: 2/4] Running spam detection...");
         SpamDetectionEngine spamEngine = SpamDetectionEngine.create(config);
         SpamDetectionReport report = spamEngine.process(docModel, config);
-        CleanedDocument cleanedDoc = cleaner.clean(docModel, report, config);
+        log.info("[Pipeline: 2/4] Spam detection complete: flagged {} text blocks, {} repeating logos.",
+                report.getSpamTextBlocksCount(), report.getSpamImagesCount());
 
+        // 3. Clean & Structure
+        log.info("[Pipeline: 3/4] Cleaning and applying text structure [{}]...", config.getTextStructure());
+        CleanedDocument cleanedDoc = cleaner.clean(docModel, report, config);
+        int totalParagraphs = cleanedDoc.getChapters().stream().mapToInt(c -> c.getParagraphs().size()).sum();
+        log.info("[Pipeline: 3/4] Text structuring complete: {} chapters, {} paragraphs.",
+                cleanedDoc.getChapters().size(), totalParagraphs);
+
+        // 4. Build EPUB
         byte[] epubBytes = null;
         if (!config.isDryRun()) {
+            log.info("[Pipeline: 4/4] Packaging in-memory EPUB...");
             epubBytes = epubBuilder.buildToByteArray(cleanedDoc, config);
+            log.info("[Pipeline: 4/4] In-memory EPUB generated ({} KB).", epubBytes.length / 1024);
         }
 
         long duration = System.currentTimeMillis() - startTime;
+        log.info("[Pipeline] Completed entire pipeline in {} ms.", duration);
+
         CleanResult result = new CleanResult(cleanedDoc, report, duration, null);
         result.setEpubBytes(epubBytes);
         return result;

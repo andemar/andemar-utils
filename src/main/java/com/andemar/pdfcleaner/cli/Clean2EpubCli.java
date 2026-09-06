@@ -46,6 +46,17 @@ public class Clean2EpubCli {
                     } else {
                         config.setLayoutMode(LayoutMode.REFLOWABLE);
                     }
+                } else if (arg.startsWith("--text-structure=") || arg.startsWith("--structure=")) {
+                    String val = arg.contains("=") ? arg.substring(arg.indexOf('=') + 1).toUpperCase() : "";
+                    if (val.contains("EXACT") || val.contains("RAW")) {
+                        config.setTextStructure(com.andemar.pdfcleaner.config.TextStructureMode.EXACT);
+                    } else {
+                        config.setTextStructure(com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC);
+                    }
+                } else if (arg.equals("--exact-structure")) {
+                    config.setTextStructure(com.andemar.pdfcleaner.config.TextStructureMode.EXACT);
+                } else if (arg.equals("--semantic-structure")) {
+                    config.setTextStructure(com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC);
                 } else if (arg.startsWith("--report-path=")) {
                     config.setReportPath(arg.substring("--report-path=".length()));
                 } else if (arg.startsWith("--ml-endpoint-url=")) {
@@ -81,10 +92,14 @@ public class Clean2EpubCli {
             }
 
             File inputFile = new File(inputPath);
-            File outputFile = outputPath != null ? new File(outputPath) : CleanerPipelineOrchestrator.deriveDefaultOutputFile(inputFile);
+            File outputFile = null;
+            if (!config.isDryRun() || outputPath != null) {
+                outputFile = outputPath != null ? new File(outputPath) : CleanerPipelineOrchestrator.deriveDefaultOutputFile(inputFile);
+            }
 
             System.out.println("Processing: " + inputFile.getAbsolutePath());
             System.out.println("Layout Mode: " + config.getLayoutMode());
+            System.out.println("Text Structure: " + config.getTextStructure());
             System.out.println("Aggressiveness: " + config.getAggressiveness());
             if (config.isDryRun()) {
                 System.out.println("Mode: DRY RUN (no modifications written)");
@@ -126,6 +141,11 @@ public class Clean2EpubCli {
                   -o, --output <file.epub>       Specify output EPUB file path (default: input.cleaned.epub)
                   --aggressiveness=<mode>        CONSERVATIVE | BALANCED | AGGRESSIVE (default: BALANCED)
                   --layout-mode=<mode>           REFLOWABLE | FIXEDISH (default: REFLOWABLE)
+                  --text-structure=<mode>        SEMANTIC | EXACT (default: SEMANTIC)
+                                                 SEMANTIC: Refines language flow, commas, semicolons, capital letters, dialogue
+                                                 EXACT: Preserves exact original line breaks, formatting and punctuation
+                  --exact-structure              Shorthand flag to keep exact original text structure
+                  --semantic-structure           Shorthand flag to apply semantic language structure
                   --dry-run                      Run spam detection and output diagnostic report without writing EPUB
                   --report-path=<file.txt>       Write spam detection report to text file
                   --whitelist-phrase=<phrase>    Preserve specific header text or chapter title
@@ -134,6 +154,7 @@ public class Clean2EpubCli {
                 
                 Examples:
                   clean2epub my_book.pdf
+                  clean2epub book.pdf --text-structure=exact -o exact.epub
                   clean2epub book.pdf --layout-mode=fixedish -o clean.epub
                   clean2epub manual.pdf --dry-run --report-path=report.txt
                 """);

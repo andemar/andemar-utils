@@ -123,4 +123,48 @@ public class SheRecommendsHaremVerificationTest {
         long imageEntries = entryNames.stream().filter(n -> n.startsWith("OEBPS/images/")).count();
         assertEquals(10, imageEntries, "All 10 legitimate images should be packed into EPUB");
     }
+
+    @Test
+    public void testSheRecommendsHaremExactStructureMode() throws Exception {
+        File pdfFile = new File("src/main/resources/static/She Recommends the Harem - Volumen 03.pdf");
+        assertTrue(pdfFile.exists());
+
+        CleanerConfig configSemantic = CleanerConfig.builder()
+                .textStructure(com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC)
+                .build();
+        CleanerConfig configExact = CleanerConfig.builder()
+                .textStructure(com.andemar.pdfcleaner.config.TextStructureMode.EXACT)
+                .build();
+
+        CleanerPipelineOrchestrator orchestrator = new CleanerPipelineOrchestrator();
+
+        File tempEpubSemantic = File.createTempFile("test-harem-sem-", ".epub");
+        File tempEpubExact = File.createTempFile("test-harem-exact-", ".epub");
+        tempEpubSemantic.deleteOnExit();
+        tempEpubExact.deleteOnExit();
+
+        CleanerPipelineOrchestrator.CleanResult resultSemantic = orchestrator.processFile(pdfFile, tempEpubSemantic, configSemantic);
+        CleanerPipelineOrchestrator.CleanResult resultExact = orchestrator.processFile(pdfFile, tempEpubExact, configExact);
+
+        assertNotNull(resultSemantic);
+        assertNotNull(resultExact);
+
+        int totalParagraphsSemantic = resultSemantic.getCleanedDocument().getChapters().stream()
+                .mapToInt(c -> c.getParagraphs().size()).sum();
+        int totalParagraphsExact = resultExact.getCleanedDocument().getChapters().stream()
+                .mapToInt(c -> c.getParagraphs().size()).sum();
+
+        System.out.println("Semantic paragraphs: " + totalParagraphsSemantic + ", Exact line paragraphs: " + totalParagraphsExact);
+
+        // Exact mode maintains original PDF text line breaks as individual paragraphs,
+        // so paragraph count must be substantially higher than in semantic reflow mode
+        assertTrue(totalParagraphsExact > totalParagraphsSemantic,
+                "Exact structure should preserve individual line breaks resulting in more line-level blocks than merged semantic paragraphs");
+        assertTrue(totalParagraphsExact >= 2000,
+                "Exact structure should preserve all distinct lines from the PDF (~2000+ lines)");
+
+        // Verify valid EPUB creation for EXACT mode
+        assertTrue(tempEpubExact.exists() && tempEpubExact.length() > 100_000,
+                "Exact EPUB should be generated successfully with valid content");
+    }
 }

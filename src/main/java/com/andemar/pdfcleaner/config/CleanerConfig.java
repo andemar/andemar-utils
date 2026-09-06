@@ -41,6 +41,9 @@ public class CleanerConfig {
     private LayoutMode layoutMode = LayoutMode.REFLOWABLE;
 
     @Builder.Default
+    private TextStructureMode textStructure = TextStructureMode.SEMANTIC;
+
+    @Builder.Default
     private List<String> whitelistPhrases = new ArrayList<>();
 
     private String mlEndpointUrl;

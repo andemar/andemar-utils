@@ -38,6 +38,8 @@ public class PdfCleaner {
     private static final String DIALOGUE_OPENERS = "“\"‘«—–-";
     private static final String SENTENCE_CLOSERS = ".?!:”\"’»…";
 
+    private final SemanticTextProcessor semanticProcessor = new SemanticTextProcessor();
+
     public CleanedDocument clean(DocumentModel rawDocument, SpamDetectionReport report, CleanerConfig config) {
         List<CleanedPage> cleanedPages = new ArrayList<>();
         List<Chapter> chapters = new ArrayList<>();
@@ -100,7 +102,7 @@ public class PdfCleaner {
             for (PageItem item : pageItems) {
                 if (item.isImage()) {
                     // Flush accumulated paragraph before placing image
-                    flushParagraph(paragraphBuffer, currentChapter);
+                    flushParagraph(paragraphBuffer, currentChapter, config.getTextStructure());
                     lastRawLine = null;
                     lastLineY = -1;
 
@@ -122,30 +124,43 @@ public class PdfCleaner {
                 boolean isHeading = isChapterHeading(tb);
 
                 if (isHeading) {
-                    flushParagraph(paragraphBuffer, currentChapter);
+                    flushParagraph(paragraphBuffer, currentChapter, config.getTextStructure());
                     lastRawLine = null;
                     lastLineY = -1;
+
+                    String headingTitle = cleanLine;
+                    if (config.getTextStructure() == com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC) {
+                        headingTitle = semanticProcessor.refineParagraph(cleanLine);
+                    }
 
                     // If current chapter already has elements, create a new chapter
                     if (!currentChapter.getElements().isEmpty() || currentChapter.getChapterIndex() == 1) {
                         if (!currentChapter.getElements().isEmpty()) {
                             currentChapter = Chapter.builder()
                                     .chapterIndex(chapters.size() + 1)
-                                    .title(cleanLine)
+                                    .title(headingTitle)
                                     .startPage(rawPage.getPageNumber())
                                     .build();
                             chapters.add(currentChapter);
                         } else {
-                            currentChapter.setTitle(cleanLine);
+                            currentChapter.setTitle(headingTitle);
                         }
                     }
                     continue;
                 }
 
-                // Check if we should flush paragraph before appending this line
+                if (config.getTextStructure() == com.andemar.pdfcleaner.config.TextStructureMode.EXACT) {
+                    // In EXACT mode, do not merge across lines; preserve verbatim line formatting
+                    currentChapter.addParagraph(formattedLine);
+                    lastRawLine = cleanLine;
+                    lastLineY = currentY;
+                    continue;
+                }
+
+                // In SEMANTIC mode: check if we should flush paragraph before appending this line
                 float deltaY = (lastLineY >= 0) ? (currentY - lastLineY) : 0;
                 if (paragraphBuffer.length() > 0 && shouldFlushParagraph(lastRawLine, cleanLine, deltaY, estimatedLineHeight)) {
-                    flushParagraph(paragraphBuffer, currentChapter);
+                    flushParagraph(paragraphBuffer, currentChapter, config.getTextStructure());
                 }
 
                 // Append line to paragraph buffer
@@ -168,14 +183,14 @@ public class PdfCleaner {
 
             // In fixed-ish mode or if page had illustrations only, flush paragraphs
             if (config.getLayoutMode() == com.andemar.pdfcleaner.config.LayoutMode.FIXED_ISH) {
-                flushParagraph(paragraphBuffer, currentChapter);
+                flushParagraph(paragraphBuffer, currentChapter, config.getTextStructure());
                 lastRawLine = null;
                 lastLineY = -1;
             }
         }
 
         // Flush any remaining text in buffer
-        flushParagraph(paragraphBuffer, currentChapter);
+        flushParagraph(paragraphBuffer, currentChapter, config.getTextStructure());
 
         // Clean up initial chapter if empty
         if (chapters.size() > 1 && chapters.get(0).getElements().isEmpty()) {
@@ -257,11 +272,16 @@ public class PdfCleaner {
         return false;
     }
 
-    private void flushParagraph(StringBuilder buffer, Chapter chapter) {
+    private void flushParagraph(StringBuilder buffer, Chapter chapter, com.andemar.pdfcleaner.config.TextStructureMode structureMode) {
         if (buffer.length() > 0) {
             String p = buffer.toString().trim();
             if (!p.isBlank()) {
-                chapter.addParagraph(p);
+                if (structureMode == com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC) {
+                    p = semanticProcessor.refineParagraph(p);
+                }
+                if (!p.isBlank()) {
+                    chapter.addParagraph(p);
+                }
             }
             buffer.setLength(0);
         }
