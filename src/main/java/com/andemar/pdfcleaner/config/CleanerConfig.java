@@ -53,6 +53,18 @@ public class CleanerConfig {
 
     private String reportPath;
 
+    private String title;
+
+    private String author;
+
+    public String getDocumentTitle() {
+        return title;
+    }
+
+    public void setDocumentTitle(String title) {
+        this.title = title;
+    }
+
     public float getEffectiveHeaderMargin() {
         return headerMarginPercent != null ? headerMarginPercent : aggressiveness.getHeaderMargin();
     }

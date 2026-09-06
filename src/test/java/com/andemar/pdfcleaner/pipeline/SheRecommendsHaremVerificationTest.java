@@ -122,6 +122,31 @@ public class SheRecommendsHaremVerificationTest {
 
         long imageEntries = entryNames.stream().filter(n -> n.startsWith("OEBPS/images/")).count();
         assertEquals(10, imageEntries, "All 10 legitimate images should be packed into EPUB");
+
+        // 7. Verify Document Title in Metadata and EPUB package
+        assertEquals("She Recommends the Harem - Volumen 03", doc.getMetadata().getTitle(),
+                "Metadata title should match the input file name without extension");
+
+        String opfContent = null;
+        String ncxContent = null;
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(java.nio.file.Files.readAllBytes(tempEpub.toPath())))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if ("OEBPS/content.opf".equals(entry.getName())) {
+                    opfContent = new String(zis.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                } else if ("OEBPS/toc.ncx".equals(entry.getName())) {
+                    ncxContent = new String(zis.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                }
+            }
+        }
+        assertNotNull(opfContent);
+        assertNotNull(ncxContent);
+        assertTrue(opfContent.contains("<dc:title>She Recommends the Harem - Volumen 03</dc:title>"),
+                "OPF metadata must embed the derived document title");
+        assertTrue(ncxContent.contains("<docTitle><text>She Recommends the Harem - Volumen 03</text></docTitle>"),
+                "NCX metadata must embed the derived document title");
+        assertFalse(opfContent.contains("<dc:title>Untitled Document</dc:title>"),
+                "OPF metadata must NOT contain 'Untitled Document'");
     }
 
     @Test

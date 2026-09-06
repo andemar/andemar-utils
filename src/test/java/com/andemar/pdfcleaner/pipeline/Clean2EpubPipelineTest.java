@@ -67,6 +67,8 @@ class Clean2EpubPipelineTest {
         // 4. Verify Cleaned Document
         CleanedDocument cleanedDoc = result.getCleanedDocument();
         assertNotNull(cleanedDoc);
+        assertEquals("sample_polluted_book", cleanedDoc.getMetadata().getTitle(),
+                "Title should be derived from input filename 'sample_polluted_book.pdf'");
         assertFalse(cleanedDoc.getChapters().isEmpty());
 
         // Verify genuine unique diagram was preserved

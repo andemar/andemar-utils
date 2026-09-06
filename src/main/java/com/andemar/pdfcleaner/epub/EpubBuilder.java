@@ -214,12 +214,13 @@ public class EpubBuilder {
         // Add Cover Page if cover image exists
         if (coverImageId != null && imageMap.containsKey(coverImageId)) {
             String coverRelPath = imageMap.get(coverImageId);
+            String docTitle = resolveSafeTitle(cleanedDoc.getMetadata());
             String coverHtml = """
                     <?xml version="1.0" encoding="UTF-8"?>
                     <!DOCTYPE html>
                     <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
                     <head>
-                    <title>Cover</title>
+                    <title>%s</title>
                     <link rel="stylesheet" type="text/css" href="styles.css"/>
                     <style type="text/css">
                       body.cover-body { margin: 0; padding: 0; text-align: center; }
@@ -232,7 +233,7 @@ public class EpubBuilder {
                     </section>
                     </body>
                     </html>
-                    """.formatted(coverRelPath);
+                    """.formatted(escapeXml(docTitle), coverRelPath);
             sections.add(new EpubSection("cover.xhtml", "Cover", coverHtml));
         }
 
@@ -355,7 +356,8 @@ public class EpubBuilder {
         sb.append("  <meta name=\"dtb:totalPageCount\" content=\"0\"/>\n");
         sb.append("  <meta name=\"dtb:maxPageNumber\" content=\"0\"/>\n");
         sb.append("</head>\n");
-        sb.append("<docTitle><text>").append(escapeXml(meta.getTitle())).append("</text></docTitle>\n");
+        String title = resolveSafeTitle(meta);
+        sb.append("<docTitle><text>").append(escapeXml(title)).append("</text></docTitle>\n");
         sb.append("<navMap>\n");
         int playOrder = 1;
         for (EpubSection sec : sections) {
@@ -373,14 +375,17 @@ public class EpubBuilder {
         StringBuilder sb = new StringBuilder();
         String bookId = "urn:uuid:" + UUID.randomUUID();
         String modifiedTime = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
+        String title = resolveSafeTitle(meta);
+        String author = resolveSafeAuthor(meta);
+        String language = resolveSafeLanguage(meta);
 
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         sb.append("<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"BookId\">\n");
         sb.append("<metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n");
         sb.append("  <dc:identifier id=\"BookId\">").append(bookId).append("</dc:identifier>\n");
-        sb.append("  <dc:title>").append(escapeXml(meta.getTitle())).append("</dc:title>\n");
-        sb.append("  <dc:creator>").append(escapeXml(meta.getAuthor())).append("</dc:creator>\n");
-        sb.append("  <dc:language>").append(escapeXml(meta.getLanguage())).append("</dc:language>\n");
+        sb.append("  <dc:title>").append(escapeXml(title)).append("</dc:title>\n");
+        sb.append("  <dc:creator>").append(escapeXml(author)).append("</dc:creator>\n");
+        sb.append("  <dc:language>").append(escapeXml(language)).append("</dc:language>\n");
         sb.append("  <meta property=\"dcterms:modified\">").append(modifiedTime).append("</meta>\n");
         if (coverImageId != null && imageMap.containsKey(coverImageId)) {
             sb.append("  <meta name=\"cover\" content=\"cover-image\"/>\n");
@@ -466,6 +471,27 @@ public class EpubBuilder {
         zos.putNextEntry(entry);
         zos.write(content);
         zos.closeEntry();
+    }
+
+    private String resolveSafeTitle(DocumentMetadata meta) {
+        if (meta != null && meta.getTitle() != null && !meta.getTitle().isBlank()) {
+            return meta.getTitle().trim();
+        }
+        return "Untitled Document";
+    }
+
+    private String resolveSafeAuthor(DocumentMetadata meta) {
+        if (meta != null && meta.getAuthor() != null && !meta.getAuthor().isBlank()) {
+            return meta.getAuthor().trim();
+        }
+        return "Unknown";
+    }
+
+    private String resolveSafeLanguage(DocumentMetadata meta) {
+        if (meta != null && meta.getLanguage() != null && !meta.getLanguage().isBlank()) {
+            return meta.getLanguage().trim();
+        }
+        return "en";
     }
 
     private String escapeXml(String text) {
