@@ -248,12 +248,15 @@ public class EpubBuilder {
                 html.append("<section class=\"page-container\" id=\"page-").append(page.getPageNumber()).append("\">\n");
                 html.append("<div class=\"page-number-label\">Original Page ").append(page.getPageNumber()).append("</div>\n");
 
-                for (TextBlock tb : page.getCleanTextBlocks()) {
-                    String pText = tb.getFormattedText();
-                    if (config.getTextStructure() == com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC) {
-                        pText = semanticProcessor.refineParagraph(pText);
+                if (config.getTextStructure() == com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC) {
+                    List<String> pageParagraphs = formatPageBlocksSemantically(page.getCleanTextBlocks());
+                    for (String p : pageParagraphs) {
+                        html.append("<p>").append(p).append("</p>\n");
                     }
-                    html.append("<p>").append(pText).append("</p>\n");
+                } else {
+                    for (TextBlock tb : page.getCleanTextBlocks()) {
+                        html.append("<p>").append(tb.getFormattedText()).append("</p>\n");
+                    }
                 }
 
                 for (ImageBlock img : page.getCleanImageBlocks()) {
@@ -416,6 +419,46 @@ public class EpubBuilder {
         sb.append("</spine>\n");
         sb.append("</package>");
         return sb.toString();
+    }
+
+    private List<String> formatPageBlocksSemantically(List<TextBlock> blocks) {
+        if (blocks == null || blocks.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<String> paragraphs = new ArrayList<>();
+        StringBuilder buffer = new StringBuilder();
+        String prevClean = null;
+
+        for (TextBlock tb : blocks) {
+            String clean = tb.getCleanText();
+            String formatted = tb.getFormattedText();
+            if (clean.isBlank()) continue;
+
+            if (buffer.length() > 0) {
+                boolean shouldFlush = semanticProcessor.isSceneDivider(clean)
+                        || semanticProcessor.isDialogueOpener(clean)
+                        || (semanticProcessor.isSentenceTerminated(prevClean) && !Character.isLowerCase(clean.charAt(0)));
+
+                if (shouldFlush) {
+                    String p = semanticProcessor.refineParagraph(buffer.toString());
+                    if (!p.isBlank()) {
+                        paragraphs.add(p);
+                    }
+                    buffer.setLength(0);
+                }
+            }
+
+            semanticProcessor.joinLines(buffer, formatted);
+            prevClean = clean;
+        }
+
+        if (buffer.length() > 0) {
+            String p = semanticProcessor.refineParagraph(buffer.toString());
+            if (!p.isBlank()) {
+                paragraphs.add(p);
+            }
+        }
+        return paragraphs;
     }
 
     private void writeZipEntry(ZipOutputStream zos, String path, byte[] content) throws IOException {
