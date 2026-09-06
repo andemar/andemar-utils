@@ -43,8 +43,16 @@ A high-performance, local Java 17+ utility and REST service that automatically d
 ### 3. Command-Line Usage (CLI)
 
 ```bash
-# Default conversion (Reflowable EPUB, Balanced aggressiveness)
+# Default conversion (Reflowable EPUB, Balanced aggressiveness, Semantic text structuring)
 clean2epub my_book.pdf
+
+# Keep exact verbatim line breaks and punctuation structure from PDF
+clean2epub my_book.pdf --text-structure=exact -o exact_book.epub
+# Or using shorthand flag:
+clean2epub my_book.pdf --exact-structure
+
+# Apply intelligent semantic language structuring (commas, semicolons, capital letters, dialogue breaks)
+clean2epub my_book.pdf --text-structure=semantic
 
 # Fixed-layout-ish mode with custom output path
 clean2epub my_book.pdf --layout-mode=fixedish -o my_book.epub
@@ -94,6 +102,7 @@ Both `POST /process` and `POST /api/dry-run` accept multipart form submissions w
 | `file` | Binary | Form-Data | **Yes** | — | Valid `.pdf` file | The input PDF document to clean and convert. |
 | `aggressiveness` | String | Query / Form | No | `BALANCED` | `CONSERVATIVE`, `BALANCED`, `AGGRESSIVE` | Controls detection thresholds for repetitive headers, footers, and logos. |
 | `layoutMode` | String | Query / Form | No | `REFLOWABLE` | `REFLOWABLE`, `FIXEDISH` | Determines structural output layout format for the EPUB. *(Applied to `/process`)* |
+| `textStructure` | String | Query / Form | No | `SEMANTIC` | `SEMANTIC`, `EXACT` | Determines whether to apply intelligent semantic language structuring or keep exact PDF lines verbatim. |
 | `whitelist` | String | Query / Form | No | *None* | Comma-separated strings | Phrases or keywords to explicitly protect from removal even if in margins. |
 | `mlEndpointUrl` | String | Query / Form | No | *None* | Valid HTTP/HTTPS URL | Optional external ML/CLIP logo classification microservice endpoint. |
 
@@ -108,11 +117,15 @@ Both `POST /process` and `POST /api/dry-run` accept multipart form submissions w
    - **`REFLOWABLE`** *(Default)*: Packages content into semantic chapters (`chapter_001.xhtml`, etc.) with properly formatted paragraphs, dialogue indentation, preserved italics/bold styling, in-sequence illustrations, and table of contents. Optimized for e-readers (Kindle, Kobo, Apple Books, Calibre) and responsive reading.
    - **`FIXEDISH`**: Packages content page-by-page (`page_001.xhtml`, etc.) preserving original PDF page boundaries (`Original Page N`). Ideal for textbooks, presentation slide decks, or documents where original page numbers must be cited directly.
 
-3. **`whitelist`**:
+3. **`textStructure`** *(or `structure`)*:
+   - **`SEMANTIC`** *(Default)*: Intelligently reconstructs paragraphs across soft line wraps, removes broken hyphens, formats novel dialogue with standard em-dashes (`—`), normalizes spacing around commas, semicolons, and colons, fixes ellipses (`...`), and enforces capital letters at sentence starts and dialogue turns.
+   - **`EXACT`**: Retains every non-spam line break verbatim as extracted from the original PDF without paragraph merging or punctuation modification. Preserves exact line-by-line structure and raw casing.
+
+4. **`whitelist`**:
    - Comma-separated list of phrases that will never be flagged as spam, regardless of position or recurrence frequency.
    - *Example*: `whitelist=She Recommends the Harem,Chapter 1,Introduction`
 
-4. **`mlEndpointUrl`**:
+5. **`mlEndpointUrl`**:
    - Optional URL for an external ML service implementing logo detection (e.g. CLIP). Borderline candidates will be posted to this endpoint for classification.
    - *Example*: `mlEndpointUrl=http://localhost:5000/classify`
 
@@ -147,7 +160,16 @@ curl -X POST "http://localhost:8080/process?layoutMode=FIXEDISH" \
   -o "user_manual.cleaned.epub"
 ```
 
-##### Example 4: Dry-Run Diagnostics (cURL)
+##### Example 4: Exact Text Structure Mode (cURL)
+Retain exact verbatim lines and original layout from the PDF:
+
+```bash
+curl -X POST "http://localhost:8080/process?textStructure=EXACT" \
+  -F "file=@novel.pdf" \
+  -o "novel.exact.epub"
+```
+
+##### Example 5: Dry-Run Diagnostics (cURL)
 Inspect spam detection statistics and flagged phrases as JSON without generating an EPUB binary:
 
 ```bash

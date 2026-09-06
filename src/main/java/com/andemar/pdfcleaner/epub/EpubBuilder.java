@@ -33,6 +33,8 @@ import java.util.zip.ZipOutputStream;
  */
 public class EpubBuilder {
 
+    private final com.andemar.pdfcleaner.cleaner.SemanticTextProcessor semanticProcessor = new com.andemar.pdfcleaner.cleaner.SemanticTextProcessor();
+
     public void build(CleanedDocument cleanedDoc, File outputFile, CleanerConfig config) throws IOException {
         byte[] epubBytes = buildToByteArray(cleanedDoc, config);
         try (FileOutputStream fos = new FileOutputStream(outputFile)) {
@@ -247,7 +249,11 @@ public class EpubBuilder {
                 html.append("<div class=\"page-number-label\">Original Page ").append(page.getPageNumber()).append("</div>\n");
 
                 for (TextBlock tb : page.getCleanTextBlocks()) {
-                    html.append("<p>").append(tb.getFormattedText()).append("</p>\n");
+                    String pText = tb.getFormattedText();
+                    if (config.getTextStructure() == com.andemar.pdfcleaner.config.TextStructureMode.SEMANTIC) {
+                        pText = semanticProcessor.refineParagraph(pText);
+                    }
+                    html.append("<p>").append(pText).append("</p>\n");
                 }
 
                 for (ImageBlock img : page.getCleanImageBlocks()) {
