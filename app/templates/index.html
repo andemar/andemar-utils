@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manga Downloader</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f4f9; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; }
+        form { display: flex; flex-direction: column; gap: 15px; }
+        label { font-weight: bold; color: #555; }
+        input[type="text"] { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; width: 100%; box-sizing: border-box; }
+        .row { display: flex; gap: 15px; }
+        .row > div { flex: 1; }
+        button { padding: 12px; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; transition: background 0.3s; }
+        button:hover { background: #0056b3; }
+        .message { margin-top: 20px; padding: 15px; background: #d4edda; color: #155724; border-radius: 4px; }
+        .error { margin-top: 20px; padding: 15px; background: #f8d7da; color: #721c24; border-radius: 4px; }
+        .logs { margin-top: 20px; padding: 15px; background: #e9ecef; border-radius: 4px; font-family: monospace; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Manga Downloader</h1>
+    
+    <form action="/download" method="POST">
+        <div>
+            <label for="url">Manga URL:</label>
+            <input type="text" id="url" name="url" placeholder="https://mockmanga.com/manga/adventure" required>
+        </div>
+        
+        <div>
+            <label for="save_folder">Save Folder (Local Absolute Path):</label>
+            <!-- Using a default path depending on OS, assuming Windows here for example, or simply generic -->
+            <input type="text" id="save_folder" name="save_folder" placeholder="C:\MangaDownloads or /Users/name/Manga" required>
+        </div>
+        
+        <div class="row">
+            <div>
+                <label for="start_chapter">Start Chapter (Optional):</label>
+                <input type="text" id="start_chapter" name="start_chapter" placeholder="001">
+            </div>
+            <div>
+                <label for="end_chapter">End Chapter (Optional):</label>
+                <input type="text" id="end_chapter" name="end_chapter" placeholder="003">
+            </div>
+        </div>
+        
+        <button type="submit">Download</button>
+    </form>
+
+    {% if message %}
+    <div class="message">{{ message }}</div>
+    {% endif %}
+
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+
+    {% if logs %}
+    <div class="logs">
+        <strong>Logs:</strong><br>
+        {% for log in logs %}
+            {{ log }}<br>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+</body>
+</html>
