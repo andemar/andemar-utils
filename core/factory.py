@@ -1,6 +1,7 @@
 from typing import Type, List
 from scrapers.base import BaseMangaScraper
 from scrapers.mock_scraper import MockScraper
+from scrapers.platinumlily_scraper import PlatinumLilyScraper
 
 class ScraperFactory:
     """
@@ -10,6 +11,7 @@ class ScraperFactory:
     # Registry of all available scrapers
     _scrapers: List[Type[BaseMangaScraper]] = [
         MockScraper,
+        PlatinumLilyScraper,
         # Add new scraper classes here as they are created
     ]
 

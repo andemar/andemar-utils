@@ -1,4 +1,9 @@
 import os
+import sys
+import asyncio
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -18,7 +23,7 @@ async def index(request: Request):
     return templates.TemplateResponse(request=request, name="index.html")
 
 @app.post("/download", response_class=HTMLResponse)
-async def download_manga(
+def download_manga(
     request: Request,
     url: str = Form(...),
     save_folder: str = Form(...),
@@ -28,6 +33,7 @@ async def download_manga(
     """
     Handles the downloading process based on user input.
     """
+    http_client = None
     try:
         # 1. Initialize core components
         http_client = HttpClient()
@@ -56,12 +62,17 @@ async def download_manga(
             ch_url = ch["url"]
             ch_num = ch["chapter_number"]
             
-            # Note: Fetch chapter HTML to parse images. For MockScraper, html is ignored.
-            ch_html = "" 
-            # If a real scraper requires html context for images:
-            # ch_html = http_client.get_html(ch_url)
+            try:
+                ch_html = http_client.get_html(ch_url)
+            except Exception as e:
+                logs.append(f"Chapter {ch_num} failed to fetch HTML: {e}")
+                continue
             
             images = scraper.get_chapter_images(ch_url, ch_html)
+            if not images:
+                logs.append(f"Chapter {ch_num} skipped: No images found (Anti-bot or JS required).")
+                continue
+                
             for idx, img_url in enumerate(images, start=1):
                 downloader.download_image(
                     url=img_url,
@@ -78,7 +89,12 @@ async def download_manga(
         })
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         error_msg = f"An error occurred: {str(e)}"
         return templates.TemplateResponse(request=request, name="index.html", context={
             "error": error_msg
         })
+    finally:
+        if http_client:
+            http_client.close()
