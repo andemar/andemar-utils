@@ -1,6 +1,7 @@
 import os
 import sys
 import asyncio
+import subprocess
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -17,10 +18,98 @@ app = FastAPI(title="Local Manga Downloader")
 base_dir = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(base_dir, "templates"))
 
+
+def open_folder_dialog(initial_dir: str = "") -> str:
+    """
+    Opens a native folder selection dialog on the host system.
+    Returns the selected folder path, or empty string if cancelled.
+    """
+    norm_initial = ""
+    if initial_dir and os.path.isdir(initial_dir):
+        norm_initial = os.path.abspath(initial_dir)
+
+    # 1. Tkinter in isolated subprocess (clean, topmost, native OS dialog)
+    try:
+        code = (
+            "import os, sys\n"
+            "try:\n"
+            "    import tkinter as tk\n"
+            "    from tkinter import filedialog\n"
+            "    root = tk.Tk()\n"
+            "    root.withdraw()\n"
+            "    root.attributes('-topmost', True)\n"
+            "    root.lift()\n"
+            "    root.focus_force()\n"
+            "    init_dir = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None\n"
+            "    path = filedialog.askdirectory(title='Select Save Folder', initialdir=init_dir)\n"
+            "    root.destroy()\n"
+            "    if path:\n"
+            "        print(path)\n"
+            "except Exception:\n"
+            "    sys.exit(1)\n"
+        )
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        res = subprocess.run(
+            [sys.executable, "-c", code, norm_initial],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            creationflags=creationflags
+        )
+        if res.returncode == 0:
+            selected = res.stdout.strip()
+            if selected:
+                return os.path.normpath(selected)
+            return ""
+    except Exception:
+        pass
+
+    # 2. Windows Fallback via PowerShell
+    if sys.platform == "win32":
+        try:
+            ps_script = (
+                "$form = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                "$form.Description = 'Select Manga Download Folder'; "
+                "$form.ShowNewFolderButton = $true; "
+            )
+            if norm_initial:
+                ps_script += f"$form.SelectedPath = '{norm_initial}'; "
+            ps_script += (
+                "$top = New-Object System.Windows.Forms.Form; "
+                "$top.TopMost = $true; "
+                "if ($form.ShowDialog($top) -eq [System.Windows.Forms.DialogResult]::OK) { "
+                "    Write-Output $form.SelectedPath "
+                "}"
+            )
+            res = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", f"Add-Type -AssemblyName System.Windows.Forms; {ps_script}"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            )
+            if res.returncode == 0:
+                selected = res.stdout.strip()
+                if selected:
+                    return os.path.normpath(selected)
+        except Exception:
+            pass
+
+    return ""
+
+
+@app.get("/api/select-folder")
+async def select_folder_endpoint(initial_dir: str = ""):
+    """Opens a native file explorer folder picker on the host system."""
+    selected_path = await asyncio.to_thread(open_folder_dialog, initial_dir)
+    return {"path": selected_path}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Renders the main UI page."""
     return templates.TemplateResponse(request=request, name="index.html")
+
 
 @app.post("/download", response_class=HTMLResponse)
 def download_manga(
@@ -61,40 +150,58 @@ def download_manga(
         for ch in filtered_chapters:
             ch_url = ch["url"]
             ch_num = ch["chapter_number"]
-            
+
             try:
                 ch_html = http_client.get_html(ch_url)
             except Exception as e:
                 logs.append(f"Chapter {ch_num} failed to fetch HTML: {e}")
                 continue
-            
+
             images = scraper.get_chapter_images(ch_url, ch_html)
             if not images:
                 logs.append(f"Chapter {ch_num} skipped: No images found (Anti-bot or JS required).")
                 continue
-                
+
             for idx, img_url in enumerate(images, start=1):
                 downloader.download_image(
                     url=img_url,
                     manga_name=manga_title,
                     chapter_number=ch_num,
-                    image_number=idx
+                    image_number=idx,
                 )
             logs.append(f"Chapter {ch_num} downloaded successfully.")
 
         message = f"Download complete for {manga_title}! Saved to {save_folder}"
-        return templates.TemplateResponse(request=request, name="index.html", context={
-            "message": message,
-            "logs": logs
-        })
+        return templates.TemplateResponse(
+            request=request,
+            name="index.html",
+            context={
+                "url": url,
+                "save_folder": save_folder,
+                "start_chapter": start_chapter or "",
+                "end_chapter": end_chapter or "",
+                "message": message,
+                "logs": logs,
+            },
+        )
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         error_msg = f"An error occurred: {str(e)}"
-        return templates.TemplateResponse(request=request, name="index.html", context={
-            "error": error_msg
-        })
+        return templates.TemplateResponse(
+            request=request,
+            name="index.html",
+            context={
+                "url": url,
+                "save_folder": save_folder,
+                "start_chapter": start_chapter or "",
+                "end_chapter": end_chapter or "",
+                "error": error_msg,
+            },
+        )
     finally:
         if http_client:
             http_client.close()
+
