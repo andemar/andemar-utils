@@ -1,0 +1,185 @@
+package com.andemar.pdfcleaner.controller;
+
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+class PdfCleanerControllerTest {
+
+    private MockMvc mockMvc;
+
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders.standaloneSetup(new PdfCleanerController()).build();
+    }
+
+    @Test
+    void testHealthEndpoint() throws Exception {
+        mockMvc.perform(get("/api/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.service").value("pdf-cleaner"));
+    }
+
+    @Test
+    void testDryRunEndpoint() throws Exception {
+        byte[] samplePdf = createMinimalPdf("CONFIDENTIAL REPORT", "Chapter 1 Body Text");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "report.pdf", "application/pdf", samplePdf
+        );
+
+        mockMvc.perform(multipart("/api/dry-run").file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
+    @Test
+    void testProcessEndpointReturnsEpub() throws Exception {
+        byte[] samplePdf = createMinimalPdf("HEADER LINE", "Sample Book Content Paragraph");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "book.pdf", "application/pdf", samplePdf
+        );
+
+        byte[] epubBytes = mockMvc.perform(multipart("/process").file(file))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"book.cleaned.epub\""))
+                .andExpect(content().contentType("application/epub+zip"))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
+
+        // Verify that EPUB metadata dc:title was derived from filename "book.pdf" -> "book"
+        String opf = extractOpfFromEpub(epubBytes);
+        assertTrue(opf.contains("<dc:title>book</dc:title>"));
+        assertFalse(opf.contains("<dc:title>Untitled Document</dc:title>"));
+    }
+
+    @Test
+    void testProcessEndpointWithCustomTitleAndAuthor() throws Exception {
+        byte[] samplePdf = createMinimalPdf("HEADER LINE", "Sample Book Content Paragraph");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "raw_scan_001.pdf", "application/pdf", samplePdf
+        );
+
+        byte[] epubBytes = mockMvc.perform(multipart("/process")
+                        .file(file)
+                        .param("title", "Overridden Novel Title")
+                        .param("author", "Famous Author"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"raw_scan_001.cleaned.epub\""))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
+
+        String opf = extractOpfFromEpub(epubBytes);
+        assertTrue(opf.contains("<dc:title>Overridden Novel Title</dc:title>"));
+        assertTrue(opf.contains("<dc:creator>Famous Author</dc:creator>"));
+    }
+
+    @Test
+    void testProcessEndpointWithQueryParameters() throws Exception {
+        byte[] samplePdf = createMinimalPdf("HEADER LINE", "Sample Book Content Paragraph");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "novel.pdf", "application/pdf", samplePdf
+        );
+
+        mockMvc.perform(multipart("/process")
+                        .file(file)
+                        .param("aggressiveness", "CONSERVATIVE")
+                        .param("layoutMode", "FIXEDISH")
+                        .param("textStructure", "EXACT")
+                        .param("whitelist", "HEADER LINE,Important Note")
+                        .param("mlEndpointUrl", "http://localhost:5000/classify"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"novel.cleaned.epub\""))
+                .andExpect(content().contentType("application/epub+zip"));
+
+        // Also test with SEMANTIC and structure alias
+        mockMvc.perform(multipart("/process")
+                        .file(file)
+                        .param("structure", "SEMANTIC"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"novel.cleaned.epub\""))
+                .andExpect(content().contentType("application/epub+zip"));
+    }
+
+    @Test
+    void testDryRunEndpointWithQueryParameters() throws Exception {
+        byte[] samplePdf = createMinimalPdf("HEADER LINE", "Sample Book Content Paragraph");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "doc.pdf", "application/pdf", samplePdf
+        );
+
+        mockMvc.perform(multipart("/api/dry-run")
+                        .file(file)
+                        .param("aggressiveness", "AGGRESSIVE")
+                        .param("whitelist", "HEADER LINE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
+    private byte[] createMinimalPdf(String headerText, String bodyText) throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage();
+            doc.addPage(page);
+
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+                cs.beginText();
+                cs.setFont(font, 10);
+                cs.newLineAtOffset(50, 750);
+                cs.showText(headerText);
+                cs.endText();
+
+                cs.beginText();
+                cs.setFont(font, 12);
+                cs.newLineAtOffset(50, 400);
+                cs.showText(bodyText);
+                cs.endText();
+            }
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            doc.save(baos);
+            return baos.toByteArray();
+        }
+    }
+
+    private String extractOpfFromEpub(byte[] epubBytes) throws Exception {
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(epubBytes))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if ("OEBPS/content.opf".equals(entry.getName())) {
+                    return new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+        }
+        return "";
+    }
+}
