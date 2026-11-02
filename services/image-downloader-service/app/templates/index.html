@@ -326,15 +326,23 @@
         </div>
         
         <div class="form-group">
-            <label for="save_folder">Save Folder (Local Absolute Path)</label>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label for="save_folder">Save Folder</label>
+                <button type="button" id="use_docker_btn" style="background: none; border: none; color: var(--primary); font-size: 12px; cursor: pointer; text-decoration: underline; font-weight: 500;">
+                    📁 Use /downloads (Docker)
+                </button>
+            </div>
             <div class="folder-input-wrapper">
-                <input type="text" id="save_folder" name="save_folder" value="{{ save_folder or '' }}" placeholder="C:\MangaDownloads or /Users/name/Manga" required>
-                <button type="button" id="browse_folder_btn" class="btn-browse" title="Open File Explorer to select folder">
+                <input type="text" id="save_folder" name="save_folder" value="{{ save_folder or '' }}" placeholder="/downloads or C:\MangaDownloads" required>
+                <button type="button" id="browse_folder_btn" class="btn-browse" title="Select Save Folder">
                     <svg class="icon" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                     </svg>
                     <span id="browse_btn_text">Browse</span>
                 </button>
+            </div>
+            <div id="folder_hint" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+                Tip: In Docker, save to <code>/downloads</code> to store files directly in your host machine's mapped folder.
             </div>
         </div>
         
@@ -470,7 +478,18 @@
         urlInput.focus();
     });
 
-    // 3. Open native File Explorer to select folder
+    const useDockerBtn = document.getElementById('use_docker_btn');
+    const folderHint = document.getElementById('folder_hint');
+
+    if (useDockerBtn) {
+        useDockerBtn.addEventListener('click', function() {
+            folderInput.value = '/downloads';
+            syncToStorage();
+            folderHint.innerHTML = '✅ Set to <code>/downloads</code> (mapped to host).';
+        });
+    }
+
+    // 3. Open native File Explorer to select folder (or auto-fill in Docker)
     browseBtn.addEventListener('click', async function(e) {
         e.preventDefault();
         const currentFolder = folderInput.value.trim();
@@ -484,7 +503,14 @@
                 const data = await response.json();
                 if (data && data.path) {
                     folderInput.value = data.path;
-                    localStorage.setItem('manga_save_folder', data.path);
+                    syncToStorage();
+                    if (data.is_container) {
+                        folderHint.innerHTML = '✅ <strong style="color: #166534;">Docker container:</strong> Selected host-mounted <code>/downloads</code> folder.';
+                    }
+                } else if (data && data.is_container) {
+                    folderInput.value = '/downloads';
+                    syncToStorage();
+                    folderHint.innerHTML = '✅ <strong style="color: #166534;">Docker container:</strong> Selected host-mounted <code>/downloads</code> folder.';
                 }
             } else {
                 console.error('Server returned error while opening folder picker');

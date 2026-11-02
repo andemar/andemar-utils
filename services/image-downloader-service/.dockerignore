@@ -1,0 +1,37 @@
+# Version control
+.git
+.gitignore
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python environments and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment files and credentials
+.env
+.env.*
+!.env.example
+
+# Scratch and test experiments
+scratch/
+
+# Local logs and OS metadata
+*.log
+.DS_Store
+Thumbs.db
+
+# Local download outputs
+downloads/
+
