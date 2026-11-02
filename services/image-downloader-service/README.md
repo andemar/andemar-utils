@@ -55,6 +55,33 @@ pip install -r requirements.txt
 
 ## Running the Application
 
+### Option A: Running with Docker (Recommended)
+
+**1. Build the Docker image**
+
+From the repository root:
+```bash
+docker build -t image-downloader-service:dev services/image-downloader-service
+```
+
+*(Or from inside `services/image-downloader-service`: `docker build -t image-downloader-service:dev .`)*
+
+**2. Run the Docker container**
+
+```powershell
+docker run --rm -it `
+  -p 8000:8000 `
+  -v "${PWD}:/app" `
+  -v "${local_folder}:/downloads" `
+  image-downloader-service:dev
+```
+
+> **Note:** Replace `${local_folder}` with the directory on your local machine where you want downloads saved (e.g., `C:\MangaDownloads` or `${PWD}/downloads`). In the web UI, set **Save Folder** to `/downloads` (or click **Browse** / **Use /downloads**).
+
+---
+
+### Option B: Running Locally with Python
+
 Once the dependencies are installed and the virtual environment is activated, you can start the application by running:
 
 ```bash

@@ -19,11 +19,19 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(base_dir, "templates"))
 
 
-def open_folder_dialog(initial_dir: str = "") -> str:
+def open_folder_dialog(initial_dir: str = "") -> dict:
     """
-    Opens a native folder selection dialog on the host system.
-    Returns the selected folder path, or empty string if cancelled.
+    Opens a native folder selection dialog on the host system,
+    or returns the mounted container directory when running in Docker.
     """
+    # 0. Detect Docker container environment
+    if os.path.exists("/.dockerenv") or os.path.isdir("/downloads"):
+        return {
+            "path": "/downloads",
+            "is_container": True,
+            "message": "Running inside Docker container. Using host-mounted '/downloads' directory."
+        }
+
     norm_initial = ""
     if initial_dir and os.path.isdir(initial_dir):
         norm_initial = os.path.abspath(initial_dir)
@@ -59,8 +67,8 @@ def open_folder_dialog(initial_dir: str = "") -> str:
         if res.returncode == 0:
             selected = res.stdout.strip()
             if selected:
-                return os.path.normpath(selected)
-            return ""
+                return {"path": os.path.normpath(selected), "is_container": False}
+            return {"path": "", "is_container": False}
     except Exception:
         pass
 
@@ -91,18 +99,17 @@ def open_folder_dialog(initial_dir: str = "") -> str:
             if res.returncode == 0:
                 selected = res.stdout.strip()
                 if selected:
-                    return os.path.normpath(selected)
+                    return {"path": os.path.normpath(selected), "is_container": False}
         except Exception:
             pass
 
-    return ""
+    return {"path": "", "is_container": False}
 
 
 @app.get("/api/select-folder")
 async def select_folder_endpoint(initial_dir: str = ""):
-    """Opens a native file explorer folder picker on the host system."""
-    selected_path = await asyncio.to_thread(open_folder_dialog, initial_dir)
-    return {"path": selected_path}
+    """Returns selected folder or container-mounted folder path."""
+    return await asyncio.to_thread(open_folder_dialog, initial_dir)
 
 
 @app.get("/", response_class=HTMLResponse)
