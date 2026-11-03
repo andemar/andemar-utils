@@ -1,26 +1,140 @@
-# Commands to use the project
+# Docker Usage (NVIDIA GPU Accelerated)
+
+This service is containerized with full NVIDIA CUDA GPU acceleration, allowing you to train models and scan folders directly from your host machine without local PyTorch installations, and without copying dataset files into the container.
+
+---
+
+## 1. Build the Docker Image
+
+From the `services/spam-service` directory:
+
+```bash
+docker build -t spam-service .
+```
+*(Or use `.\spam-service.ps1 build` on Windows / `./spam-service.sh build` on Linux).*
+
+---
+
+## 2. Using the CLI Helper Scripts (Recommended)
+
+Helper scripts are provided to automatically map host folders as Docker volume mounts and pass through your NVIDIA GPU.
+
+### Training (`train`)
+Point directly to your 2 separate host dataset folders (spam and not spam) and your desired output directory. **No files are copied into the container!**
+
+```powershell
+# Windows (PowerShell)
+.\spam-service.ps1 train `
+  -SpamDir "F:\AI\Training\manga_spam" `
+  -NotSpamDir "F:\AI\Training\manga_images" `
+  -OutputDir "F:\AI\Training\output" `
+  -Epochs 30 `
+  -BatchSize 32
+```
+
+```bash
+# Linux / WSL (Bash)
+./spam-service.sh train \
+  --spam-dir "/path/to/manga_spam" \
+  --not-spam-dir "/path/to/manga_images" \
+  --output-dir "/path/to/output" \
+  --epochs 30 \
+  --batch_size 32
+```
+
+> **Note:** The trained `best_model.pt` and `training_log.csv` are written directly to your host's `-OutputDir`.
+
+---
+
+### Scanning a Folder (`scan`)
+Point to any folder of images on your computer to scan with the trained model:
+
+```powershell
+# Windows (PowerShell) - Flag and move detected spam to 'spam_detected/' subfolder
+.\spam-service.ps1 scan `
+  -Folder "F:\AI\MangaChapters\Chapter01" `
+  -Model "F:\AI\Training\output\best_model.pt" `
+  -MoveSpam `
+  -Threshold 0.83
+```
+
+```powershell
+# Windows (PowerShell) - Rename detected spam in-place (e.g. page01.jpg -> page01-spam.jpg)
+.\spam-service.ps1 scan `
+  -Folder "F:\AI\MangaChapters\Chapter01" `
+  -Model "F:\AI\Training\output\best_model.pt" `
+  -RenameSpam `
+  -Threshold 0.83
+```
+
+```bash
+# Linux / WSL (Bash)
+./spam-service.sh scan \
+  --folder "/path/to/chapter_images" \
+  --model "/path/to/output/best_model.pt" \
+  --move-spam \
+  --threshold 0.83
+```
+
+---
+
+## 3. Direct Docker Commands (Manual)
+
+### Training
+Mount your spam folder to `/dataset/spam:ro`, clean images to `/dataset/not_spam:ro`, and output folder to `/output`:
+
+```powershell
+docker run --rm -it --gpus all --shm-size=4g `
+  -v "F:\AI\Training\manga_spam:/dataset/spam:ro" `
+  -v "F:\AI\Training\manga_images:/dataset/not_spam:ro" `
+  -v "F:\AI\Training\output:/output" `
+  spam-service train --epochs 30 --batch_size 32
+```
+
+### Scan (Inference)
+Mount your images folder to `/scan` and the trained model folder to `/models:ro`:
+
+```powershell
+docker run --rm -it --gpus all --shm-size=4g `
+  -v "G:\Books\Source\manga\workspace\test:/scan" `
+  -v "F:\AI\Training\output:/models:ro" `
+  spam-service scan --model /models/best_model.pt --rename_spam --threshold 0.83
+```
+
+---
+
+# Quick Commands Summary
+
+### Docker (Recommended — GPU Accelerated)
+```powershell
+# Build image
+docker build -t spam-service .
+
+# Training:
+docker run --rm -it --gpus all --shm-size=4g `
+  -v "F:\AI\Training\manga_spam:/dataset/spam:ro" `
+  -v "F:\AI\Training\manga_images:/dataset/not_spam:ro" `
+  -v "F:\AI\Training\output:/output" `
+  spam-service train --epochs 30 --batch_size 32
+
+# Scan:
+docker run --rm -it --gpus all --shm-size=4g `
+  -v "G:\Books\Source\manga\workspace\test:/scan" `
+  -v "F:\AI\Training\output:/models:ro" `
+  spam-service scan --model /models/best_model.pt --rename_spam --threshold 0.83
+```
+
+### Local / Without Docker (Legacy)
 ```bash
 pip install torch==2.3.0 torchvision==0.18.0 --index-url https://download.pytorch.org/whl/cu121
-```
-```bash
 pip install -r requirements.txt
-```
 
-```bash
 Copy-Item "F:\AI\Training\manga_spam\*"   -Destination ".\dataset\spam\"     -Recurse
 Copy-Item "F:\AI\Training\manga_images\*" -Destination ".\dataset\not_spam\" -Recurse
-```
 
-```bash
 python train.py --epochs 30
-```
-
-```bash
 python scan_folder.py --folder ./my_manga_folder --move_spam
-```
-
-```bash
-python scan_folder.py --folder './my_manga_folder' --rename_spam - threshold 0.83
+python scan_folder.py --folder './my_manga_folder' --rename_spam --threshold 0.83
 ```
 
 # Spam vs. Manga Binary Image Classifier

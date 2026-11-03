@@ -1,0 +1,27 @@
+# Git
+.git
+.gitignore
+
+# Python cache & build
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Training artifacts & local datasets
+output/
+dataset/
+*.pt
+*.csv
+*.log
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
