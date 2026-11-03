@@ -1,0 +1,71 @@
+{
+  "id": "spam-service-train",
+  "name": "Spam Detector Trainer",
+  "description": "GPU-accelerated PyTorch EfficientNet-B4 binary classifier training on scanlation ad vs. manga panels.",
+  "icon": "cpu",
+  "type": "cli-job",
+  "imageName": "spam-service:latest",
+  "dockerfileDir": "services/spam-service",
+  "hardware": {
+    "gpu": true
+  },
+  "defaultCommand": ["train"],
+  "volumes": [
+    {
+      "name": "dataset",
+      "hostPath": "./services/spam-service/dataset",
+      "containerPath": "/dataset",
+      "mode": "ro",
+      "description": "Training dataset containing /spam and /not_spam"
+    },
+    {
+      "name": "output",
+      "hostPath": "./services/spam-service/output",
+      "containerPath": "/output",
+      "mode": "rw",
+      "description": "Output directory for model checkpoint (best_model.pt) and training metrics"
+    }
+  ],
+  "env": [
+    {
+      "key": "PYTHONUNBUFFERED",
+      "default": "1",
+      "editable": false
+    }
+  ],
+  "parameters": [
+    {
+      "name": "--epochs",
+      "label": "Epochs",
+      "type": "number",
+      "default": 10,
+      "required": true,
+      "description": "Number of training epochs"
+    },
+    {
+      "name": "--batch_size",
+      "label": "Batch Size",
+      "type": "number",
+      "default": 16,
+      "required": true,
+      "description": "Training batch size"
+    },
+    {
+      "name": "--lr",
+      "label": "Learning Rate",
+      "type": "number",
+      "default": 0.0001,
+      "required": true,
+      "description": "AdamW learning rate"
+    },
+    {
+      "name": "--early_stopping",
+      "label": "Early Stopping Patience",
+      "type": "number",
+      "default": 5,
+      "required": false,
+      "description": "Epoch patience before early stopping"
+    }
+  ]
+}
+

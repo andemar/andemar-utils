@@ -1,0 +1,41 @@
+version: '3.8'
+
+networks:
+  hub-network:
+    name: hub-network
+    driver: bridge
+
+services:
+  hub-backend:
+    build:
+      context: core/hub-backend
+      dockerfile: Dockerfile
+    container_name: hub-backend
+    restart: unless-stopped
+    ports:
+      - "${HUB_BACKEND_PORT:-4000}:4000"
+    environment:
+      - PORT=4000
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - DOCKER_NETWORK=hub-network
+      - SERVICES_DIR=/services
+      - HOST_WORKSPACE_DIR=${HOST_WORKSPACE_DIR:-.}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./services:/services:ro
+    networks:
+      - hub-network
+
+  hub-ui:
+    build:
+      context: core/hub-ui
+      dockerfile: Dockerfile
+    container_name: hub-ui
+    restart: unless-stopped
+    ports:
+      - "${HUB_UI_PORT:-80}:80"
+    depends_on:
+      - hub-backend
+    networks:
+      - hub-network
+

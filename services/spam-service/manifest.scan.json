@@ -1,0 +1,49 @@
+{
+  "id": "spam-service-scan",
+  "name": "Spam Image Cleaner Scanner",
+  "description": "Scans manga folders for promotional watermarks and ad pages using trained weights.",
+  "icon": "terminal",
+  "type": "cli-job",
+  "imageName": "spam-service:latest",
+  "dockerfileDir": "services/spam-service",
+  "hardware": {
+    "gpu": false
+  },
+  "defaultCommand": ["scan"],
+  "volumes": [
+    {
+      "name": "scanDir",
+      "hostPath": "./services/spam-service/scan",
+      "containerPath": "/scan",
+      "mode": "rw",
+      "description": "Directory of manga images to scan and clean"
+    },
+    {
+      "name": "modelsDir",
+      "hostPath": "./services/spam-service/output",
+      "containerPath": "/models",
+      "mode": "ro",
+      "description": "Directory holding best_model.pt weights"
+    }
+  ],
+  "parameters": [
+    {
+      "name": "--action",
+      "label": "Action",
+      "type": "select",
+      "options": ["report", "move", "rename"],
+      "default": "report",
+      "required": true,
+      "description": "Whether to only report, move spam images to _spam/, or append .spam suffix"
+    },
+    {
+      "name": "--threshold",
+      "label": "Spam Threshold",
+      "type": "number",
+      "default": 0.85,
+      "required": false,
+      "description": "Confidence threshold to classify image as spam"
+    }
+  ]
+}
+

@@ -1,0 +1,29 @@
+{
+  "id": "anitracker-app",
+  "name": "AniTracker Web App",
+  "description": "Next.js 16 anime release schedule, episode countdowns, and Nyaa torrent search.",
+  "icon": "globe",
+  "type": "web-ui",
+  "imageName": "anitracker-app-service:latest",
+  "dockerfileDir": "services/anitracker-app-service",
+  "hardware": {
+    "gpu": false
+  },
+  "ports": {
+    "container": 3000,
+    "host": 3000
+  },
+  "env": [
+    {
+      "key": "PORT",
+      "default": "3000",
+      "editable": false
+    },
+    {
+      "key": "HOSTNAME",
+      "default": "0.0.0.0",
+      "editable": false
+    }
+  ]
+}
+

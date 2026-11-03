@@ -1,11 +1,35 @@
 # Andemar Utils
 
-A monorepo collection of standalone utility services, scrapers, converters, and ML tools.
+A monorepo collection of standalone utility services, scrapers, converters, and ML tools unified by a central **Application Hub** platform.
+
+---
+
+## ⚡ Central Application Hub Platform
+
+The repository includes an orchestrated Hub platform consisting of an **Angular SPA** (`core/hub-ui`) and a **Node.js/TypeScript Orchestrator** (`core/hub-backend`). Instead of running multiple heavy services simultaneously, the Hub dynamically discovers declarative `manifest.json` configurations in `/services`, starts containers on demand, streams CLI logs in real-time with `xterm.js`, and reverse-proxies Web and REST APIs.
+
+### Quick Start (Hub Platform)
+```bash
+# 1. Copy sample environment file
+cp .env.example .env
+
+# 2. Build the child service images (as needed)
+make build-all
+# Or individually: make build-spam, make build-anitracker, make build-pdf
+
+# 3. Launch the Application Hub
+docker compose up -d
+
+# 4. Open in browser
+# Hub UI:      http://localhost (or http://localhost:80)
+# Hub Backend: http://localhost:4000/api/services
+```
 
 ---
 
 ## Table of Contents
 
+- [Central Application Hub Platform](#-central-application-hub-platform)
 - [Overview](#overview)
 - [Services](#services)
   - [1. AniTracker App Service (`anitracker-app-service`)](#1-anitracker-app-service-anitracker-app-service)

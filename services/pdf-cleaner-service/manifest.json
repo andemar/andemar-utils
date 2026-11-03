@@ -1,0 +1,68 @@
+{
+  "id": "pdf-cleaner-api",
+  "name": "PDF Cleaner & EPUB Converter",
+  "description": "Spring Boot 3 + PDFBox utility to strip repetitive watermarks and compile clean reflowable EPUBs.",
+  "icon": "file-text",
+  "type": "rest-api",
+  "imageName": "pdf-cleaner-service:latest",
+  "dockerfileDir": "services/pdf-cleaner-service",
+  "hardware": {
+    "gpu": false
+  },
+  "ports": {
+    "container": 8080,
+    "host": 8080
+  },
+  "api": {
+    "healthCheckPath": "/api/health",
+    "endpoints": [
+      {
+        "id": "process-pdf",
+        "path": "/process",
+        "method": "POST",
+        "description": "Upload a PDF, strip repetitive ads, and receive a clean EPUB file",
+        "consumes": "multipart/form-data",
+        "produces": "application/epub+zip",
+        "fileField": "file",
+        "parameters": [
+          {
+            "name": "aggressiveness",
+            "label": "Aggressiveness",
+            "type": "select",
+            "options": ["CONSERVATIVE", "BALANCED", "AGGRESSIVE"],
+            "default": "BALANCED",
+            "required": false
+          },
+          {
+            "name": "layoutMode",
+            "label": "Layout Mode",
+            "type": "select",
+            "options": ["REFLOWABLE", "FIXEDISH"],
+            "default": "REFLOWABLE",
+            "required": false
+          }
+        ]
+      },
+      {
+        "id": "dry-run",
+        "path": "/api/dry-run",
+        "method": "POST",
+        "description": "Analyze PDF for spam layout blocks and return JSON report",
+        "consumes": "multipart/form-data",
+        "produces": "application/json",
+        "fileField": "file",
+        "parameters": [
+          {
+            "name": "aggressiveness",
+            "label": "Aggressiveness",
+            "type": "select",
+            "options": ["CONSERVATIVE", "BALANCED", "AGGRESSIVE"],
+            "default": "BALANCED",
+            "required": false
+          }
+        ]
+      }
+    ]
+  }
+}
+
