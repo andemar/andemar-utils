@@ -1,0 +1,190 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Custom anime-themed colors */
+  --color-neon-pink: oklch(0.72 0.25 350);
+  --color-neon-purple: oklch(0.55 0.22 290);
+  --color-neon-blue: oklch(0.65 0.2 260);
+  --color-neon-cyan: oklch(0.75 0.15 200);
+  --color-anime-green: oklch(0.72 0.2 155);
+  --color-anime-gold: oklch(0.8 0.15 85);
+
+  /* Custom animations */
+  --animate-glow-pulse: glow-pulse 3s ease-in-out infinite;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-shimmer: shimmer 2s ease-in-out infinite;
+  --animate-slide-up: slide-up 0.4s ease-out;
+  --animate-fade-in-up: fade-in-up 0.5s ease-out;
+
+  @keyframes glow-pulse {
+    0%, 100% { opacity: 0.4; filter: blur(20px); }
+    50% { opacity: 0.8; filter: blur(30px); }
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-4px); }
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  @keyframes slide-up {
+    from { transform: translateY(10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes fade-in-up {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+}
+
+/* Dark anime theme — this IS the default */
+:root {
+  --background: oklch(0.12 0.025 280);
+  --foreground: oklch(0.93 0.01 280);
+  --card: oklch(0.17 0.03 280);
+  --card-foreground: oklch(0.93 0.01 280);
+  --popover: oklch(0.15 0.03 280);
+  --popover-foreground: oklch(0.93 0.01 280);
+  --primary: oklch(0.72 0.25 350);
+  --primary-foreground: oklch(0.98 0.005 280);
+  --secondary: oklch(0.22 0.04 280);
+  --secondary-foreground: oklch(0.88 0.02 280);
+  --muted: oklch(0.20 0.03 280);
+  --muted-foreground: oklch(0.65 0.02 280);
+  --accent: oklch(0.55 0.22 290);
+  --accent-foreground: oklch(0.95 0.01 280);
+  --destructive: oklch(0.60 0.22 25);
+  --border: oklch(0.25 0.04 280);
+  --input: oklch(0.22 0.04 280);
+  --ring: oklch(0.72 0.25 350);
+  --chart-1: oklch(0.72 0.25 350);
+  --chart-2: oklch(0.55 0.22 290);
+  --chart-3: oklch(0.65 0.2 260);
+  --chart-4: oklch(0.75 0.15 200);
+  --chart-5: oklch(0.72 0.2 155);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.14 0.03 280);
+  --sidebar-foreground: oklch(0.93 0.01 280);
+  --sidebar-primary: oklch(0.72 0.25 350);
+  --sidebar-primary-foreground: oklch(0.98 0.005 280);
+  --sidebar-accent: oklch(0.22 0.04 280);
+  --sidebar-accent-foreground: oklch(0.88 0.02 280);
+  --sidebar-border: oklch(0.25 0.04 280);
+  --sidebar-ring: oklch(0.72 0.25 350);
+}
+
+/* Optional: Light mode for users who want it */
+.light {
+  --background: oklch(0.98 0.005 280);
+  --foreground: oklch(0.15 0.025 280);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0.025 280);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.025 280);
+  --primary: oklch(0.55 0.25 320);
+  --primary-foreground: oklch(0.98 0.005 280);
+  --secondary: oklch(0.95 0.01 280);
+  --secondary-foreground: oklch(0.25 0.03 280);
+  --muted: oklch(0.95 0.01 280);
+  --muted-foreground: oklch(0.45 0.02 280);
+  --accent: oklch(0.45 0.2 290);
+  --accent-foreground: oklch(0.98 0.005 280);
+  --destructive: oklch(0.55 0.22 25);
+  --border: oklch(0.90 0.01 280);
+  --input: oklch(0.90 0.01 280);
+  --ring: oklch(0.55 0.25 320);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Custom utility styles */
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, oklch(0.72 0.25 350), oklch(0.55 0.22 290), oklch(0.65 0.2 260));
+  }
+
+  .glass {
+    @apply bg-card/80 backdrop-blur-xl border border-border/50;
+  }
+
+  .glass-hover {
+    @apply hover:bg-card/90 hover:border-border transition-all duration-300;
+  }
+
+  .glow-border {
+    box-shadow: 0 0 15px oklch(0.72 0.25 350 / 0.15),
+                inset 0 0 15px oklch(0.72 0.25 350 / 0.05);
+  }
+
+  .anime-card-hover {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  .anime-card-hover:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 12px 40px oklch(0.72 0.25 350 / 0.15),
+                0 4px 12px oklch(0 0 0 / 0.3);
+  }
+}
