@@ -1,0 +1,41 @@
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# Build and local cache directories
+.gradle/
+build/
+out/
+bin/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+*.swp
+*.swo
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+.springBeans
+.sts4-cache
+
+# Environment files and credentials
+.env
+.env.*
+!.env.example
+
+# Local outputs and generated files
+*.epub
+diagnostics.txt
+
+# OS metadata and logs
+*.log
+.DS_Store
+Thumbs.db
+

@@ -207,6 +207,52 @@ Invoke-RestMethod -Uri "http://localhost:8080/process?aggressiveness=BALANCED&la
 
 ---
 
+### 5. Running with Docker
+
+The project includes a `Dockerfile` based on `eclipse-temurin:26-jdk` and runs as an unprivileged user (`appuser`, UID 1000). Gradle wrapper and dependencies are pre-cached during build time.
+
+#### Build the Image
+
+From the `services/pdf-cleaner-service` directory:
+
+```bash
+docker build -t pdf-cleaner-service .
+```
+
+#### Run the HTTP Server Container
+
+Expose port `8080` to access the REST API:
+
+```bash
+docker run --rm -it -p 8080:8080 --name pdf-cleaner-service pdf-cleaner-service
+```
+
+For **local development**, bind-mount the `src/` directory so code modifications are immediately available inside the container without rebuilding the image:
+
+* **Windows PowerShell:**
+  ```powershell
+  docker run --rm -it -p 8080:8080 -v "${PWD}/src:/app/src" --name pdf-cleaner-service pdf-cleaner-service
+  ```
+* **Linux / macOS (Bash / Zsh):**
+  ```bash
+  docker run --rm -it -p 8080:8080 -v "$PWD/src:/app/src" --name pdf-cleaner-service pdf-cleaner-service
+  ```
+
+#### Run CLI Mode via Docker
+
+Mount your local directory to `/data` to process files directly from the command line:
+
+* **Windows PowerShell:**
+  ```powershell
+  docker run --rm -v "${PWD}:/data" pdf-cleaner-service ./gradlew bootRun --no-daemon --args="/data/my_book.pdf -o /data/my_book.cleaned.epub"
+  ```
+* **Linux / macOS (Bash / Zsh):**
+  ```bash
+  docker run --rm -v "$PWD:/data" pdf-cleaner-service ./gradlew bootRun --no-daemon --args="/data/my_book.pdf -o /data/my_book.cleaned.epub"
+  ```
+
+---
+
 ## Project Structure
 
 ```
