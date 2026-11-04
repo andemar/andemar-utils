@@ -1,0 +1,26 @@
+{
+  "id": "image-downloader-app",
+  "name": "Manga Image Downloader",
+  "description": "FastAPI & Playwright web utility to scrape, download, and organize manga chapters.",
+  "icon": "download",
+  "type": "web-ui",
+  "imageName": "image-downloader-service:latest",
+  "dockerfileDir": "services/image-downloader-service",
+  "hardware": {
+    "gpu": false
+  },
+  "ports": {
+    "container": 8000,
+    "host": 8000
+  },
+  "volumes": [
+    {
+      "name": "downloads",
+      "hostPath": "./services/image-downloader-service/downloads",
+      "containerPath": "/downloads",
+      "mode": "rw",
+      "description": "Directory to store downloaded manga chapters"
+    }
+  ]
+}
+
