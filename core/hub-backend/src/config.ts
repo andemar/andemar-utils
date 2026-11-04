@@ -61,6 +61,11 @@ export const config: AppConfig = {
  * into the absolute path required by the Docker daemon for volume bind mounts.
  */
 export function resolveHostBindMount(manifestPath: string, relativeOrAbsolutePath: string): string {
+  // If path is a Windows absolute path (e.g. D:\... or C:/...):
+  if (/^[a-zA-Z]:[\\/]/.test(relativeOrAbsolutePath)) {
+    return relativeOrAbsolutePath;
+  }
+
   // If path is already an absolute host path:
   if (path.isAbsolute(relativeOrAbsolutePath) && !relativeOrAbsolutePath.startsWith('/services')) {
     return relativeOrAbsolutePath;

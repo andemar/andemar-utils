@@ -59,12 +59,12 @@
       "description": "AdamW learning rate"
     },
     {
-      "name": "--early_stopping",
-      "label": "Early Stopping Patience",
+      "name": "--img_size",
+      "label": "Image Size (px)",
       "type": "number",
-      "default": 5,
+      "default": 380,
       "required": false,
-      "description": "Epoch patience before early stopping"
+      "description": "Input image resolution in pixels (default: 380 for EfficientNet-B4)"
     }
   ]
 }

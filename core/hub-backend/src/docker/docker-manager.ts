@@ -171,22 +171,18 @@ export class DockerManager {
         HostConfig: {
           PortBindings: portBindings,
           Binds: binds,
-          RestartPolicy: { Name: 'no' }
+          RestartPolicy: { Name: 'no' },
+          NetworkMode: config.dockerNetwork,
+          ShmSize: 2 * 1024 * 1024 * 1024
+        },
+        NetworkingConfig: {
+          EndpointsConfig: {
+            [config.dockerNetwork]: {
+              Aliases: [containerName, serviceId]
+            }
+          }
         }
       });
-
-      // Connect to hub-network if available
-      try {
-        const network = this.docker.getNetwork(config.dockerNetwork);
-        await network.connect({
-          Container: container.id,
-          EndpointConfig: {
-            Aliases: [containerName, serviceId]
-          }
-        });
-      } catch (err: any) {
-        console.warn(`[DockerManager] Could not attach container to network ${config.dockerNetwork}: ${err.message}`);
-      }
 
       await container.start();
     }
@@ -290,7 +286,8 @@ export class DockerManager {
     const binds: string[] = [];
     if (manifest.volumes && manifest.manifestPath) {
       for (const vol of manifest.volumes) {
-        const hostPath = resolveHostBindMount(manifest.manifestPath, vol.hostPath);
+        const configuredPath = req.volumeOverrides?.[vol.name] || vol.hostPath;
+        const hostPath = resolveHostBindMount(manifest.manifestPath, configuredPath);
         const mode = vol.mode || 'rw';
         binds.push(`${hostPath}:${vol.containerPath}:${mode}`);
       }
@@ -309,10 +306,11 @@ export class DockerManager {
       }
     }
 
-    // Hardware GPU configuration
+    // Hardware and memory configuration (4GB shared memory for PyTorch DataLoaders)
     const hostConfig: Docker.HostConfig = {
       Binds: binds,
-      AutoRemove: true
+      AutoRemove: true,
+      ShmSize: 4 * 1024 * 1024 * 1024
     };
 
     if (manifest.hardware?.gpu) {

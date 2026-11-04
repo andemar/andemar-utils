@@ -93,11 +93,15 @@ import { ServiceStatusSummary } from '../../models/service.model';
                     [disabled]="isRunning()"
                     class="form-control" />
                 } @else if (param.type === 'boolean') {
-                  <input
-                    type="checkbox"
-                    [(ngModel)]="formValues[param.name]"
-                    [name]="param.name"
-                    [disabled]="isRunning()" />
+                  <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: var(--text-main); font-size: 0.85rem;">
+                    <input
+                      type="checkbox"
+                      [(ngModel)]="formValues[param.name]"
+                      [name]="param.name"
+                      [disabled]="isRunning()"
+                      style="width: 16px; height: 16px; cursor: pointer;" />
+                    <span>Enable {{ param.label || param.name }}</span>
+                  </label>
                 } @else {
                   <input
                     type="text"
@@ -115,13 +119,29 @@ import { ServiceStatusSummary } from '../../models/service.model';
               </div>
             }
 
-            <!-- Mounted Volumes Info -->
+            <!-- Mounted Volumes Configuration -->
             @if (service()?.manifest?.volumes?.length) {
               <div style="margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
-                <label class="form-label" style="margin-bottom: 0.5rem;">Mounted Host Paths</label>
+                <label class="form-label" style="margin-bottom: 0.5rem; font-weight: 600; color: var(--text-main);">
+                  Host Mount Paths
+                </label>
                 @for (vol of service()!.manifest.volumes!; track vol.name) {
-                  <div style="font-size: 0.75rem; background: var(--bg-primary); padding: 0.4rem 0.6rem; border-radius: 4px; margin-bottom: 0.35rem; color: var(--text-dim);">
-                    <strong style="color: var(--text-muted);">{{ vol.name }}:</strong> {{ vol.containerPath }} ({{ vol.mode || 'rw' }})
+                  <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label class="form-label" style="font-size: 0.75rem;">
+                      {{ vol.name }} → {{ vol.containerPath }} ({{ vol.mode || 'rw' }})
+                    </label>
+                    <input
+                      type="text"
+                      [(ngModel)]="volumeValues[vol.name]"
+                      [name]="'vol_' + vol.name"
+                      [disabled]="isRunning()"
+                      class="form-control"
+                      style="font-size: 0.8rem; font-family: monospace;" />
+                    @if (vol.description) {
+                      <small style="font-size: 0.7rem; color: var(--text-dim); display: block; margin-top: 0.2rem;">
+                        {{ vol.description }}
+                      </small>
+                    }
                   </div>
                 }
               </div>
@@ -167,6 +187,7 @@ export class TerminalRunnerComponent implements OnInit, AfterViewInit, OnDestroy
   service = signal<ServiceStatusSummary | null>(null);
   isRunning = signal<boolean>(false);
   formValues: Record<string, any> = {};
+  volumeValues: Record<string, string> = {};
 
   private terminal!: Terminal;
   private fitAddon!: FitAddon;
@@ -255,6 +276,15 @@ export class TerminalRunnerComponent implements OnInit, AfterViewInit, OnDestroy
             }
           }
         }
+
+        // Populate volume defaults
+        if (res.service.manifest.volumes) {
+          for (const v of res.service.manifest.volumes) {
+            if (!this.volumeValues[v.name]) {
+              this.volumeValues[v.name] = v.hostPath;
+            }
+          }
+        }
       },
       error: (err) => console.error('Error fetching service:', err)
     });
@@ -262,7 +292,10 @@ export class TerminalRunnerComponent implements OnInit, AfterViewInit, OnDestroy
 
   runJob(): void {
     this.isRunning.set(true);
-    this.api.executeCliJob(this.serviceId(), { parameters: this.formValues }).subscribe({
+    this.api.executeCliJob(this.serviceId(), {
+      parameters: this.formValues,
+      volumeOverrides: this.volumeValues
+    }).subscribe({
       next: () => {
         console.log('Job dispatched.');
       },

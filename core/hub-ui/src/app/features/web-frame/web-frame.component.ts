@@ -83,6 +83,7 @@ export class WebFrameComponent implements OnInit {
   service = signal<ServiceStatusSummary | null>(null);
   safeUrl = signal<SafeResourceUrl | null>(null);
   externalUrl = signal<string>('');
+  private rawFrameUrl = '';
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id') || '';
@@ -94,17 +95,28 @@ export class WebFrameComponent implements OnInit {
     this.api.getService(this.serviceId()).subscribe({
       next: (res) => {
         this.service.set(res.service);
-        const proxyUrl = `/proxy/${this.serviceId()}/`;
-        this.safeUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(proxyUrl));
-        this.externalUrl.set(res.service.directUrl || proxyUrl);
+
+        // When a host port is mapped (e.g. port 3000 for AniTracker), embed the direct host URL.
+        // This ensures SPAs (Next.js, Vite, React) can resolve their root assets (/_next/static, etc.) natively.
+        // Otherwise, route through the backend dynamic reverse proxy (/proxy/:serviceId/).
+        const host = window.location.hostname;
+        const targetUrl = res.service.ports?.host
+          ? `http://${host}:${res.service.ports.host}/`
+          : `/proxy/${this.serviceId()}/`;
+
+        this.rawFrameUrl = targetUrl;
+        this.safeUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(targetUrl));
+        this.externalUrl.set(res.service.directUrl || targetUrl);
       },
       error: (err) => console.error('Error fetching service:', err)
     });
   }
 
   reloadIframe(): void {
-    const proxyUrl = `/proxy/${this.serviceId()}/?_t=${Date.now()}`;
-    this.safeUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(proxyUrl));
+    if (!this.rawFrameUrl) return;
+    const delimiter = this.rawFrameUrl.includes('?') ? '&' : '?';
+    const refreshed = `${this.rawFrameUrl}${delimiter}_t=${Date.now()}`;
+    this.safeUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(refreshed));
   }
 
   startContainer(): void {

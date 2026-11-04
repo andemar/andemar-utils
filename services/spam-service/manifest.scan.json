@@ -7,7 +7,7 @@
   "imageName": "spam-service:latest",
   "dockerfileDir": "services/spam-service",
   "hardware": {
-    "gpu": false
+    "gpu": true
   },
   "defaultCommand": ["scan"],
   "volumes": [
@@ -28,22 +28,36 @@
   ],
   "parameters": [
     {
-      "name": "--action",
-      "label": "Action",
-      "type": "select",
-      "options": ["report", "move", "rename"],
-      "default": "report",
-      "required": true,
-      "description": "Whether to only report, move spam images to _spam/, or append .spam suffix"
-    },
-    {
       "name": "--threshold",
       "label": "Spam Threshold",
       "type": "number",
       "default": 0.85,
       "required": false,
-      "description": "Confidence threshold to classify image as spam"
+      "description": "Confidence threshold to classify image as spam (0.0 - 1.0)"
+    },
+    {
+      "name": "--move_spam",
+      "label": "Move Spam to Subfolder",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "description": "Move flagged spam images into a 'spam_detected/' subfolder"
+    },
+    {
+      "name": "--rename_spam",
+      "label": "Rename Spam in Place",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "description": "Append '-spam' suffix to flagged image filenames"
+    },
+    {
+      "name": "--img_size",
+      "label": "Image Size (px)",
+      "type": "number",
+      "default": 380,
+      "required": false,
+      "description": "Input image size in pixels (default: 380)"
     }
   ]
 }
-

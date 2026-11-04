@@ -1,44 +1,48 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { serviceScanner } from '../discovery/service-scanner';
 import { config } from '../config';
 
 export function createDynamicProxyMiddleware() {
   return createProxyMiddleware({
+    // Provide a fallback target to prevent http-proxy-middleware v3 from throwing
+    target: 'http://127.0.0.1:4000',
     router: async (req: Request) => {
-      // Extract serviceId from /proxy/:serviceId/*
-      const match = req.url.match(/^\/proxy\/([^/?#]+)/);
-      if (!match) return undefined;
+      // Determine full path from originalUrl or url
+      const fullPath = req.originalUrl || req.url;
+      // Match serviceId from /proxy/:serviceId or :serviceId
+      const cleanPath = fullPath.replace(/^\/proxy\/?/, '');
+      const serviceId = cleanPath.split(/[\/?#]/)[0];
 
-      const serviceId = match[1];
+      if (!serviceId) return undefined;
+
       const manifest = serviceScanner.get(serviceId);
       if (!manifest || !manifest.ports) return undefined;
 
-      // In Docker Compose network, use container name; otherwise fallback to localhost
       const containerName = `hub-service-${serviceId}`;
       const port = manifest.ports.container;
 
-      // If running inside container with hub-network:
+      // In Docker Compose network, reach container by its DNS alias
       if (process.env.DOCKER_NETWORK) {
         return `http://${containerName}:${port}`;
       }
 
-      // If running locally, check if host port is mapped:
+      // If running locally, route to mapped host port if available
       if (manifest.ports.host) {
         return `http://127.0.0.1:${manifest.ports.host}`;
       }
 
       return `http://${containerName}:${port}`;
     },
-    pathRewrite: (pathStr: string, req: Request) => {
-      // Strip /proxy/:serviceId from path
-      const rewritten = pathStr.replace(/^\/proxy\/[^/?#]+/, '') || '/';
-      return rewritten;
+    pathRewrite: (pathStr: string) => {
+      // Strip both /proxy/:serviceId and /:serviceId from the start of pathStr
+      const rewritten = pathStr.replace(/^(\/proxy)?\/[^/?#]+/, '');
+      return rewritten.startsWith('/') ? rewritten : '/' + rewritten;
     },
     changeOrigin: true,
     ws: true,
     on: {
-      proxyRes: (proxyRes, req, res) => {
+      proxyRes: (proxyRes) => {
         // Strip X-Frame-Options to permit embedding in Angular SPA <iframe>
         delete proxyRes.headers['x-frame-options'];
         // Remove frame-ancestors restriction in CSP
@@ -48,7 +52,7 @@ export function createDynamicProxyMiddleware() {
         }
       },
       error: (err, req, res) => {
-        console.error(`[DynamicProxy] Proxy routing error:`, err);
+        console.error(`[DynamicProxy] Proxy routing error:`, err.message);
         if (!('headersSent' in res) || !(res as Response).headersSent) {
           (res as Response).status(502).json({
             error: 'Bad Gateway',
@@ -60,4 +64,3 @@ export function createDynamicProxyMiddleware() {
     }
   });
 }
-
