@@ -6,30 +6,132 @@ A monorepo collection of standalone utility services, scrapers, converters, and 
 
 ## ⚡ Central Application Hub Platform
 
-The repository includes an orchestrated Hub platform consisting of an **Angular SPA** (`core/hub-ui`) and a **Node.js/TypeScript Orchestrator** (`core/hub-backend`). Instead of running multiple heavy services simultaneously, the Hub dynamically discovers declarative `manifest.json` configurations in `/services`, starts containers on demand, streams CLI logs in real-time with `xterm.js`, and reverse-proxies Web and REST APIs.
+The repository includes a unified, lazy-loaded orchestration platform consisting of an **Angular 19 SPA** (`core/hub-ui`) and a **Node.js/TypeScript Docker Orchestrator** (`core/hub-backend`). 
 
-### Quick Start (Hub Platform)
-```bash
-# 1. Copy sample environment file
+Instead of running multiple resource-intensive microservices simultaneously, the Hub:
+- **Discovers tools dynamically** via declarative `manifest.json` files in `/services`.
+- **Starts containers on demand** when accessed via the UI, leaving CPU, RAM, and GPU VRAM completely idle when not in use.
+- **Streams CLI batch & ML logs in real time** through an integrated `xterm.js` terminal.
+- **Embeds Web UIs** seamlessly in sandboxed views with container lifecycle toolbars.
+- **Proxies REST APIs** with file drag-and-drop dropzones and automatic binary downloads.
+
+---
+
+### Prerequisites & Image Building: Do You Need to Build Tools First?
+
+* **Starting the Hub**: You can launch the central Hub platform (`hub-ui` and `hub-backend`) at any time using `docker compose up -d`.
+* **Launching Tools from the Hub**: Because each tool runs inside its own isolated container, **the Docker image for a specific tool must exist locally before you can launch or run it from the Hub**.
+* **Do you need to build all tool images?** **No!** You only need to build the images for the tools you actually intend to use.
+* **Alternative (Standalone Native Development)**: If you prefer not to use Docker for a particular tool, every service can also be run locally and natively outside the Hub (e.g. using `npm run dev`, `python run.py`, or `./gradlew bootRun`) as detailed in their respective sections below.
+
+---
+
+### Step-by-Step Hub Launch Commands
+
+#### 1. Configure Environment File
+Copy the example environment file to `.env`:
+```powershell
+# Windows PowerShell
+Copy-Item .env.example .env
+
+# Linux / macOS
 cp .env.example .env
-
-# 2. Build the child service images (as needed)
-make build-all
-# Or individually: make build-spam, make build-anitracker, make build-pdf
-
-# 3. Launch the Application Hub
-docker compose up -d
-
-# 4. Open in browser
-# Hub UI:      http://localhost (or http://localhost:80)
-# Hub Backend: http://localhost:4000/api/services
 ```
+
+#### 2. Build Tool Docker Images (As Needed)
+
+* **Windows PowerShell (Using helper script):**
+  ```powershell
+  # Build all tool images at once:
+  .\build-services.ps1 -All
+
+  # Or build only specific tools you want to test:
+  .\build-services.ps1 -Spam         # PyTorch ML Trainer & Classifier (spam-service)
+  .\build-services.ps1 -AniTracker   # Next.js Anime Schedule Tracker (anitracker-app-service)
+  .\build-services.ps1 -Pdf          # Spring Boot PDF/EPUB Cleaner (pdf-cleaner-service)
+  .\build-services.ps1 -Downloader   # FastAPI Manga Chapter Scraper (image-downloader-service)
+  ```
+
+* **Linux / macOS (Using Makefile):**
+  ```bash
+  # Build all tool images:
+  make build-all
+
+  # Or build individually:
+  make build-spam
+  make build-anitracker
+  make build-pdf
+  make build-downloader
+  ```
+
+* **Direct Docker Commands (Any OS):**
+  ```bash
+  docker build -t spam-service:latest services/spam-service
+  docker build -t anitracker-app-service:latest services/anitracker-app-service
+  docker build -t pdf-cleaner-service:latest services/pdf-cleaner-service
+  docker build -t image-downloader-service:latest services/image-downloader-service
+  ```
+
+#### 3. Launch the Application Hub
+```bash
+docker compose up -d
+```
+> **Tip:** If you updated code inside `core/hub-ui` or `core/hub-backend`, append `--build` to rebuild the Hub containers: `docker compose up -d --build`.
+
+#### 4. Access the Unified Platform
+* **Application Hub Web UI**: [http://localhost](http://localhost) (or port `80`)
+* **Orchestrator Backend API**: [http://localhost:4000/api/services](http://localhost:4000/api/services)
+
+#### 5. Stop the Hub
+```bash
+docker compose down
+```
+
+---
+
+### Host Folder Structure & Volume Mounts
+
+When executing jobs (like ML training or image scraping), containers mount host directories to read input files and write output models.
+
+The Hub allows you to configure these host directories in two ways:
+1. **Directly in the Hub UI**: When opening a tool in the Terminal or Runner view, the **Host Mount Paths** are presented as editable text fields. You can specify any absolute host path (e.g. `D:\Descargas\utils\dataset`).
+2. **Default Repository Paths**: If left unchanged, the Hub defaults to subfolders within `services/<service-name>/`.
+
+#### Recommended Host Directory Structure (Example)
+
+```plaintext
+D:\Descargas\utils\  (or your chosen workspace folder)
+├── dataset/
+│   ├── not_spam/             # [REQUIRED NAME] Clean manga images (Label 0)
+│   └── spam/                 # [REQUIRED NAME] Scanlation ad/credit images (Label 1)
+├── output/                   # Trained model weights (best_model.pt) & training logs
+├── scan/                     # Raw manga chapters/images to scan for ad spam
+└── downloads/                # Download target folder for manga chapter scrapers
+```
+
+#### Service Volume Requirements:
+
+1. **Spam Detector Trainer (`spam-service-train`)**:
+   - `dataset` ➔ Mounted to `/dataset`. 
+     > [!IMPORTANT]
+     > PyTorch's `dataset.py` strictly requires subdirectories named **`not_spam`** (clean images) and **`spam`** (ad images). If your folders are named `manga_images` or `manga_spam`, rename them to `not_spam` and `spam`.
+   - `output` ➔ Mounted to `/output`. Receives the generated `best_model.pt` checkpoint and `training_log.csv`.
+
+2. **Spam Image Cleaner Scanner (`spam-service-scan`)**:
+   - `scanDir` ➔ Mounted to `/scan`. Contains images to scan and clean.
+   - `modelsDir` ➔ Mounted to `/models`. Must contain `best_model.pt` (typically pointed to your `output` directory from training).
+
+3. **Manga Image Downloader (`image-downloader-app`)**:
+   - `downloads` ➔ Mounted to `/downloads`. Target storage for downloaded chapters.
 
 ---
 
 ## Table of Contents
 
 - [Central Application Hub Platform](#-central-application-hub-platform)
+  - [Prerequisites & Image Building](#prerequisites--image-building-do-you-need-to-build-tools-first)
+  - [Step-by-Step Hub Launch Commands](#step-by-step-hub-launch-commands)
+  - [Host Folder Structure & Volume Mounts](#host-folder-structure--volume-mounts)
 - [Overview](#overview)
 - [Services](#services)
   - [1. AniTracker App Service (`anitracker-app-service`)](#1-anitracker-app-service-anitracker-app-service)
