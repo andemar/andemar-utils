@@ -94,13 +94,13 @@ docker compose down
 When executing jobs (like ML training or image scraping), containers mount host directories to read input files and write output models.
 
 The Hub allows you to configure these host directories in two ways:
-1. **Directly in the Hub UI**: When opening a tool in the Terminal or Runner view, the **Host Mount Paths** are presented as editable text fields. You can specify any absolute host path (e.g. `D:\Descargas\utils\dataset`).
+1. **Directly in the Hub UI**: When opening a tool in the Terminal or Runner view, the **Host Mount Paths** are presented as editable text fields. You can specify any absolute host path (e.g. `D:\utils\dataset`).
 2. **Default Repository Paths**: If left unchanged, the Hub defaults to subfolders within `services/<service-name>/`.
 
 #### Recommended Host Directory Structure (Example)
 
 ```plaintext
-D:\Descargas\utils\  (or your chosen workspace folder)
+D:\utils\  (or your chosen workspace folder)
 ├── dataset/
 │   ├── not_spam/             # [REQUIRED NAME] Clean manga images (Label 0)
 │   └── spam/                 # [REQUIRED NAME] Scanlation ad/credit images (Label 1)
